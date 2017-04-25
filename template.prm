@@ -11,8 +11,8 @@ spikedetekt = dict(
 
     n_excerpts=50,
     excerpt_size_seconds=1,
-    threshold_strong_std_factor=4.5,
-    threshold_weak_std_factor=2.,
+    threshold_strong_std_factor=5.5,
+    threshold_weak_std_factor=3.5,
     detect_spikes='negative',
 
     connected_component_join_size=1,
