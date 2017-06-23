@@ -1,11 +1,9 @@
 title temp bat for clustering
-Z:
-source activate phy
-cd Z:\HarveyLab\Alan\Data\20170615\p3_walking
-klusta recording.prm
-cd Z:\HarveyLab\Alan\Data\20170615\p2_walking
-klusta recording.prm
-cd Z:\HarveyLab\Alan\Data\20170615\p2_brushing
-klusta recording.prm
-cd Z:\HarveyLab\Alan\Data\20170615\p1_walking
-klusta recording.prm
+pushd \\research.files.med.harvard.edu\Neurobio
+cd HarveyLab\Alan\Data\20170622\p5_brush
+klusta hindpaw.prm --overwrite
+cd HarveyLab\Alan\Data\20170622\p7_brush
+klusta forepaw.prm --overwrite
+cd HarveyLab\Alan\Data\20170622\p2_brush
+klusta brush.prm --overwrite
+popd

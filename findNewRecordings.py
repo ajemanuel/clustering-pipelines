@@ -3,7 +3,8 @@ from stat import S_ISREG, ST_CTIME, ST_MODE
 
 def findNewRecordings():
 	
-	serverDir = r'Z:\HarveyLab\Alan\Data' # to map your network drive, open cmd, type 'pushd \\research.files.med.harvard.edu\Neurobio' and take note of the drive letter.
+	#serverDir = r'Z:\HarveyLab\Alan\Data' # map your network drive before running, can do so by typing 'net use Z: \\research.files.med.harvard.edu\Neurobio' into cmd
+	serverDir = r'\\research.files.med.harvard.edu\Neurobio\HarveyLab\Alan\Data'
 	
 	entries = (os.path.join(serverDir, fn) for fn in os.listdir(serverDir))
 	entries = ((os.stat(path),path) for path in entries)
@@ -11,7 +12,7 @@ def findNewRecordings():
 				for stat, path in entries)
 	entries2 = []
 	for cdate, path in sorted(entries):
-		if cdate > (time.time() - (3600*24)): # find and extract directories less than 1 day old
+		if cdate > (time.time() - (2*3600*24)): # find and extract directories less than 1 day old
 			entries2.append((cdate, path))
 
 	origDir = os.getcwd()
@@ -26,6 +27,7 @@ def findNewRecordings():
 						dirList.append((subdir, basename))
 	
 	os.chdir(origDir)
+	for d in dirList: print(d)
 	return dirList
 
 def get_information(directory):
