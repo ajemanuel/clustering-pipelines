@@ -25,7 +25,7 @@ def RHDtoDATprbPRM(dataPath,basename,probefile):
 	sys.path.append(kwikToolsPath)
 	
 	#batch write .rhd to .dat
-	for file in glob.glob(basename + '*.rhd'):
+	for file in sorted(glob.glob(basename + '*.rhd')):
 		d = rhd.read_rhd(file)
 		recordings = np.transpose(d['amplifier_data'])
 		stimulation = ()
@@ -38,7 +38,7 @@ def RHDtoDATprbPRM(dataPath,basename,probefile):
 			d['aux_input_data'][analogChannel].tofile(os.path.splitext(file)[0] + 'chan' + str(analogChannel) + '.ai')
 
 	#create .prm file and copy .prb file to data directory
-	files = glob.glob(basename + '*.dat')
+	files = sorted(glob.glob(basename + '*.dat'))
 	copy2(kwikToolsPath+'/'+probefile,dataPath)
 	
 	with open(basename + '.prm', 'w') as text_file:

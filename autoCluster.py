@@ -13,9 +13,8 @@ def autoCluster():
 	print(workingPaths)
 	## writing a .bat file called tempBAT with instructions for clustering
 	with open('C:\\users\\Alan\\Documents\\Github\\kwik-tools\\tempBAT.bat','w+') as f:
-		#f.write('@echo off\n')
+		f.write('@echo off\n')
 		f.write('title temp bat for clustering\n')
-		#f.write('Z:\n') # change to server drive, after which changing directory cd will work.
 		f.write('pushd \\\\research.files.med.harvard.edu\\Neurobio\n') #creates temporary directory where drive letter starts at Neurobio
 	
 	for path, basename in workingPaths:
@@ -28,7 +27,7 @@ def autoCluster():
 			print(path[path.find('HarveyLab'):])
 			with open('C:\\users\\Alan\\Documents\\Github\\kwik-tools\\tempBAT.bat','a+') as f:
 				f.write('cd '+path[path.find('HarveyLab'):]+'\n')
-				f.write('klusta '+basename+'.prm --overwrite\n')
+				f.write('klusta '+basename+'.prm\n')
 			with open('C:\\DATA\\autoClusterLogs\\log'+dt.strftime('%Y%m%d')+'.txt','a+') as f2:
 				f2.write('New clustering performed.\n')
 		else:
@@ -40,7 +39,8 @@ def autoCluster():
 	with open('C:\\users\\Alan\\Documents\\Github\\kwik-tools\\tempBAT.bat','a+') as f:
 		#f.write('@echo off\n')
 		#f.write('deactivate\n') #deactivate the phy environment
-		f.write('popd') # escape temp directory
+		f.write('popd\n') # escape temp directory
+		f.write('exit\n')
 		
 	p = subprocess.Popen('C:\\users\\Alan\\Documents\\Github\\kwik-tools\\tempBAT.bat',shell=True) #run the tempBat file.
 	stdout, stderr = p.communicate()

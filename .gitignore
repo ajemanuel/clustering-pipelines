@@ -48,3 +48,4 @@ Temporary Items
 .ipynb_checkpoints/
 .__pycache__/
 *.ipynb
+*.pyc

@@ -8,6 +8,7 @@ def dailyBAT():
 		f.write('call python writeAutoLog.py\n')
 		f.write('call python autoExtract.py\n')
 		f.write('call python autoCluster.py\n')
+		f.write('exit\n')
 
 	p = subprocess.Popen('C:\\users\\Alan\\Documents\\Github\\kwik-tools\\dailyBAT.bat',shell=True) #run the dailyBAT file.
 	stdout, stderr = p.communicate()

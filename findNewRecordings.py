@@ -4,7 +4,7 @@ from stat import S_ISREG, ST_CTIME, ST_MODE
 def findNewRecordings():
 	
 	#serverDir = r'Z:\HarveyLab\Alan\Data' # map your network drive before running, can do so by typing 'net use Z: \\research.files.med.harvard.edu\Neurobio' into cmd
-	serverDir = r'\\research.files.med.harvard.edu\Neurobio\HarveyLab\Alan\Data'
+	serverDir = r'\\research.files.med.harvard.edu\Neurobio\HarveyLab\Alan\Data' #use this and pushd/popd to access the server
 	
 	entries = (os.path.join(serverDir, fn) for fn in os.listdir(serverDir))
 	entries = ((os.stat(path),path) for path in entries)
