@@ -12,7 +12,7 @@ def findNewRecordings():
 				for stat, path in entries)
 	entries2 = []
 	for cdate, path in sorted(entries):
-		if cdate > (time.time() - (2*3600*24)): # find and extract directories less than 1 day old
+		if cdate > (time.time() - (1*3600*24)): # find and extract directories less than 1 day old
 			entries2.append((cdate, path))
 
 	origDir = os.getcwd()

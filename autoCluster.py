@@ -15,7 +15,6 @@ def autoCluster():
 	with open('C:\\users\\Alan\\Documents\\Github\\kwik-tools\\tempBAT.bat','w+') as f:
 		f.write('@echo off\n')
 		f.write('title temp bat for clustering\n')
-		f.write('pushd \\\\research.files.med.harvard.edu\\Neurobio\n') #creates temporary directory where drive letter starts at Neurobio
 	
 	for path, basename in workingPaths:
 		if not (os.path.isfile(path+'/'+basename+'.kwik')):
@@ -26,10 +25,12 @@ def autoCluster():
 			print(path)
 			print(path[path.find('HarveyLab'):])
 			with open('C:\\users\\Alan\\Documents\\Github\\kwik-tools\\tempBAT.bat','a+') as f:
+				f.write('pushd \\\\research.files.med.harvard.edu\\Neurobio\n') #creates temporary directory where drive letter starts at Neurobio
 				f.write('cd '+path[path.find('HarveyLab'):]+'\n')
 				f.write('klusta '+basename+'.prm\n')
+				f.write('popd\n') # escape temp directory
 			with open('C:\\DATA\\autoClusterLogs\\log'+dt.strftime('%Y%m%d')+'.txt','a+') as f2:
-				f2.write('New clustering performed.\n')
+				f2.write('New clustering performed.\nFile: '+path+'\\'+basename+'.kwik\n')
 		else:
 			print('already clustered')
 
@@ -39,7 +40,6 @@ def autoCluster():
 	with open('C:\\users\\Alan\\Documents\\Github\\kwik-tools\\tempBAT.bat','a+') as f:
 		#f.write('@echo off\n')
 		#f.write('deactivate\n') #deactivate the phy environment
-		f.write('popd\n') # escape temp directory
 		f.write('exit\n')
 		
 	p = subprocess.Popen('C:\\users\\Alan\\Documents\\Github\\kwik-tools\\tempBAT.bat',shell=True) #run the tempBat file.
