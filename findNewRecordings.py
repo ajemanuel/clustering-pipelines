@@ -22,7 +22,9 @@ def findNewRecordings():
 		for subdir, dirs, files in os.walk(path):
 			for x in files:
 				if x.endswith('.rhd'):
-					basename = x[:x.find('_')]
+					#basename = x[:x.find('_')] ## use this to extract the first part of the filenamme as the basename
+					basename = os.path.basename(subdir) ## use this to extract the folder as the basename rather than the filename
+					
 					if (subdir, basename) not in dirList:
 						dirList.append((subdir, basename))
 	
