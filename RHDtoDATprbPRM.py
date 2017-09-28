@@ -40,8 +40,9 @@ def RHDtoDATprbPRM(dataPath,basename,probefile):
 		#save digital input streams
 		for digitalChannel in range(d['board_dig_in_data'].shape[0]):
 			d['board_dig_in_data'][digitalChannel].tofile(os.path.splitext(file)[0] + 'chan' + str(digitalChannel) + '.di')
-		for analogChannel in range(d['aux_input_data'].shape[0]):
-			d['aux_input_data'][analogChannel].tofile(os.path.splitext(file)[0] + 'chan' + str(analogChannel) + '.ai')
+		if len(d['aux_input_data']) != 0:
+			for analogChannel in range(d['aux_input_data'].shape[0]):
+				d['aux_input_data'][analogChannel].tofile(os.path.splitext(file)[0] + 'chan' + str(analogChannel) + '.ai')
 
 	#create .prm file and copy .prb file to data directory
 	datFiles = glob.glob('*.dat')
