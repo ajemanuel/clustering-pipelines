@@ -47,6 +47,5 @@ Temporary Items
 .apdisk
 .ipynb_checkpoints/
 .__pycache__/
-*.ipynb
 *.pyc
 .ipynb_checkpoints/RHD+files+to+DAT+and+PRM-checkpoint.ipynb
