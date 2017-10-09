@@ -8,25 +8,22 @@ from shutil import copy2
 import datetime
 import subprocess
 
-def RHDtoDATprbPRM(dataPath,basename,probefile):
+def RHDtoDATprbPRM(dataPath,basename,probe=None):
     """dataPath is a string that points to the folder containing RHD files.
     basename is the common string that this program will use to generate new .dat and .kwik files.
     probefile is a string describing the probe; currently, 'A1x32-Poly2-5mm-50s-177-A32.prb' , 'Buzsaki32.prb' , and 
     'ASSY-37W-DBC11A-intan.prb' are accepted.
     This function also generates a raw.dat file in the subfolder alldata that can be used for mda conversion and mountainsort.
     """
-    if probefile != 'A1x32-Poly2-5mm-50s-177-A32.prb' and probefile != 'Buzsaki32.prb' and probefile != 'ASSY-37W-DBC11A-intan.prb':
-        print('Probe file is not valid')
-        return(-1)
-    
-    print('Generating .dat and .prm files with probe',probefile)
-    
-    kwikToolsPath = 'C://Users/Alan/Documents/Github/kwik-tools'
+    if probe is not None and probe is not 'poly2':
+        raise('probe is not valid')
+        
+    clusteringPath = 'C://Users/Alan/Documents/Github/clustering-pipelines'
     
     origDir = os.getcwd()
     os.chdir(dataPath)
     
-    sys.path.append(kwikToolsPath)
+    sys.path.append(clusteringPath)
     
     ## batch write .rhd to .dat
     
@@ -52,7 +49,7 @@ def RHDtoDATprbPRM(dataPath,basename,probefile):
     datFiles.sort(key=os.path.getmtime)
     
     # copy .prb files to dataPath
-    copy2(kwikToolsPath+'/'+probefile,dataPath)
+    copy2(clusteringPath+'/'+probefile,dataPath)
     
     with open(basename + '.prm', 'w') as text_file:
         text_file.write('experiment_name = \'{0}\' \n'.format(basename))

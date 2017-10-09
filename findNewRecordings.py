@@ -8,8 +8,8 @@ def findNewRecordings():
 	
 	entries = (os.path.join(serverDir, fn) for fn in os.listdir(serverDir))
 	entries = ((os.stat(path),path) for path in entries)
-	entries = ((stat[ST_CTIME], path)
-				for stat, path in entries)
+	entries = ((stat[ST_CTIME], path) for stat, path in entries)
+    
 	entries2 = []
 	for cdate, path in sorted(entries):
 		if cdate > (time.time() - (1*3600*24)): # find and extract directories less than 1 day old
