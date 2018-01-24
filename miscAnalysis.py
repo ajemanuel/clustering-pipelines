@@ -117,7 +117,7 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, b
     plt.show()
     plt.close()    
     
-def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000):
+def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000, units=None, duration=None, verbose=False):
     """
     Use this to convert spike time rasters into PSTHs with user-defined bin
     
@@ -126,6 +126,9 @@ def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000):
         samples - list of ndarrays, time of spikes in samples
         spikes- list of ndarrays, spike cluster identities
         sample_rate - int, Hz, default = 20000
+        units - None or sequence, list of units to include in PSTH
+        duration - None or float, duration of PSTH; if None, inferred from latest spike
+        verbose - boolean, print information about psth during calculation
         
     output: dict with keys:
         psths - ndarray
@@ -137,18 +140,24 @@ def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000):
     
     bin_samples = bin_size * sample_rate
     
-    maxBin = max(np.concatenate(samples))/sample_rate    
+    if duration is None:
+        maxBin = max(np.concatenate(samples))/sample_rate    
+    else: 
+        maxBin = duration
     
-    units = np.unique(np.hstack(spikes))
+    if units is None:  # if user does not specify which units to use (usually done with np.unique goodspikes)
+        units = np.unique(np.hstack(spikes))
     numUnits = len(units)
     
-    psths = np.zeros([int(np.floor(maxBin/bin_size))+1, numUnits])
-    print('psth size is',psths.shape)
+    psths = np.zeros([int(np.ceil(maxBin/bin_size)), numUnits])
+    if verbose:
+        print('psth size is',psths.shape)
     psth_dict = {}
     for i in range(len(samples)):
         for stepSample, stepSpike in zip(samples[i], spikes[i]):
             psths[int(np.floor(stepSample/bin_samples)), np.where(units == stepSpike)[0][0]] += 1
-    psth_dict['psths'] = psths/bin_size/len(samples) # in units of Hz
+
+    psth_dict['psths'] = psths#/bin_size/len(samples) # in units of Hz
     psth_dict['bin_size'] = bin_size # in s
     psth_dict['sample_rate'] = sample_rate # in Hz
     psth_dict['xaxis'] = np.arange(0,maxBin,bin_size)
@@ -160,7 +169,7 @@ def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000):
     
 ### functions regarding indentOnGrid
 
-def plotActualPositions(filename, setup='alan', offset=(9,9), labelPositions=True):
+def plotActualPositions(filename, setup='alan', center=True, labelPositions=True):
     """
     Plot locations of grid indentation.
     
@@ -168,7 +177,7 @@ def plotActualPositions(filename, setup='alan', offset=(9,9), labelPositions=Tru
         filename - str, file containing indentOnGrid output
         setup - str, specifies which setup used, specified because some x and y stages are transposed
             current options: 'alan'
-        offset - tuple, specifies offset of center points
+        center - boolean, specify whether to center grid on 0,0
         labelPositions - boolean, label order of the positions with text annotations
         
     No output, generates plots.
@@ -184,20 +193,33 @@ def plotActualPositions(filename, setup='alan', offset=(9,9), labelPositions=Tru
     
     # plotting
     
-    if setup == 'alan':
-        xmultiplier = -1  ## my stage is transposed in x
+    if setup == 'alan':  # displays the points so that they match the orientation of the image. 
+        xmultiplier = 1  ## my stage is not transposed in x
         ymultiplier = -1  ## my stage is transposed in y
+        if center:
+            xOffset = -int(round(np.median(gridPosActual[0][0])))
+            yOffset = int(round(np.median(gridPosActual[0][1])))
+        else:
+            xOffset = 0
+            yOffset = 0
     else:
         xmultiplier = 1
         ymultiplier = 1
-    
+        if center:
+            xOffset = -int(round(np.median(gridPosActual[0][0])))
+            yOffset = -int(round(np.median(gridPosActual[0][1])))
+        else:
+            xOffset = 0
+            yOffset = 0
+
+        
     a0 = plt.axes()
-    a0.scatter(gridPosActual[0][0]*xmultiplier+offset[0],gridPosActual[0][1]*ymultiplier+offset[1],s=1500,marker='.')
+    a0.scatter(gridPosActual[0][0]*xmultiplier+xOffset,gridPosActual[0][1]*ymultiplier+yOffset,s=1500,marker='.')
     
     if labelPositions:
         for i,pos in enumerate(np.transpose(gridPosActual[0])):
             #print(pos)
-            a0.annotate(str(i+1),(pos[0]-offset[0],pos[1]-offset[0]),
+            a0.annotate(str(i+1),(pos[0]*xmultiplier+xOffset,pos[1]*ymultiplier+yOffset),
                 horizontalalignment='center',
                 verticalalignment='center',
                 color='white',
@@ -317,13 +339,13 @@ def plotPositionResponses(positionResponses, gridPosActual, maxSpikes=None, forc
     f0 is the plot handle
     """
     if setup == 'alan': # my axes are transposed
-        xmultiplier = -1
+        xmultiplier = 1
         ymultiplier = -1
     else:
         xmultiplier = 1
         ymultiplier = 1
     if center:
-        xOffset = int(round(np.median(gridPosActual[0])))
+        xOffset = -int(round(np.median(gridPosActual[0])))
         #print('xOffset = {0}'.format(xOffset))
         yOffset = int(round(np.median(gridPosActual[1])))
         #print('yOffset = {0}'.format(yOffset))
@@ -341,9 +363,113 @@ def plotPositionResponses(positionResponses, gridPosActual, maxSpikes=None, forc
     cb = f0.colorbar(sc)
     cb.set_label('spikes')
     f0.tight_layout()
-    if save: plt.savefig('positionResponse{0}mN.png'.format(force),transparent=True)
+    if save: plt.savefig('positionResponse_unit{0}_{1}mN.png'.format(unit, force),transparent=True)
 
+### Functions for plotting responses to optical random dot patterns
 
+def extractLaserPositions(matFile):
+    """
+    Calculate the positions of the stimulus at each point.
+    
+    input:
+    matFile - str, path to file generated from stimulus
+    
+    output:
+    positions - list of tuples containing (x, y) coordinates at each position.
+    """
+    
+    voltageToDistance = 3.843750000000000e+03  # calibration for alan's rig with thorlabs scan mirrors
+    temp = scipy.io.loadmat(matFile, variable_names=['laser','x','y'])
+    laser = temp['laser']
+    x = temp['x']
+    y = temp['y']
+    positions = []
+    laserSamples = np.where(laser[1:] > laser[:-1])[0]
+    for sample in laserSamples:
+        positions.append((float(x[sample]*voltageToDistance), float(y[sample]*voltageToDistance)))
+    return positions
+
+def extractLaserPSTH(matFile, samples, spikes, sampleRate=20000):
+    """
+    Make lists of samples and spikes at each laser pulse
+    inputs:
+        matFile - str, path to file made when stimulating
+        samples - sequence of spike times
+        spikes - sequence of cluster identities for each spike
+    outputs:
+        samplesList - list of lists of spike samples after each laser pulse
+        spikesList - list of lists of cluster identity corresponding to samplesList
+        laserList - list of ndarrays with waveform of laser pulse command
+    """
+    
+    
+    temp = scipy.io.loadmat(matFile)
+    laserOnsets = np.where(temp['laser'][1:] > temp['laser'][:-1])[0]
+    duration = temp['ISI']
+    
+    samplesList = []
+    spikesList = []
+    laserList = []
+    
+    for start in laserOnsets:
+        adjStart = int(start * (sampleRate/temp['Fs']))
+        end = int(adjStart + sampleRate * duration)
+        samplesList.append(samples[(samples > adjStart) & (samples < end)] - adjStart)
+        spikesList.append(spikes[(samples > adjStart) & (samples < end)])
+        laserList.append(temp['laser'][start:int(start+temp['Fs']*temp['ISI'])])
+    
+    return samplesList, spikesList, laserList
+    
+    
+    
+    
+    
+def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_window, units):
+    
+    
+    samplesList, spikesList, laserList = extractLaserPSTH(matFile, samples, spikes)
+    parameters = scipy.io.loadmat(matFile, variable_names=['edgeLength','offsetX','offsetY','ISI'])
+    laserPositions = np.transpose(extractLaserPositions(matFile))
+    binSizeMicron = binSize * 1000
+    halfEdgeLength = parameters['edgeLength']/2
+    xmin = int(parameters['offsetX'] - halfEdgeLength)
+    xmax = int(parameters['offsetX'] + halfEdgeLength)
+    ymin = int(parameters['offsetY'] - halfEdgeLength)
+    ymax = int(parameters['offsetY'] + halfEdgeLength)
+    
+    numBins = int(parameters['edgeLength']/binSizeMicron)
+    numUnits = len(units)
+    
+    output = np.zeros([numBins, numBins, numUnits])
+    
+    for Bin in range(numBins * numBins):
+        binxy = np.unravel_index(Bin,(numBins,numBins))
+        tempPositions = np.where((laserPositions[0] > (xmin + binSizeMicron*binxy[0])) &
+                             (laserPositions[0] < xmin + binSizeMicron*(binxy[0]+1)) &
+                             (laserPositions[1] > (ymin + binSizeMicron*binxy[1])) &
+                             (laserPositions[1] < ymin + binSizeMicron*(binxy[1]+1)))[0]
+        if len(tempPositions > 0):
+            tempPSTH = makeSweepPSTH(0.001,[samplesList[a] for a in tempPositions],[spikesList[a] for a in tempPositions],
+                units=units, duration=float(parameters['ISI']))
+            
+            for unit in range(numUnits):
+                output[binxy[0],binxy[1],unit] = np.mean(tempPSTH['psths'][window[0]:window[1],unit]) - np.mean(tempPSTH['psths'][bs_window[0]:bs_window[1],unit])
+    for unit in range(numUnits):
+        plt.figure(figsize=(4,4))
+        a0 = plt.axes()
+        absMax = np.amax(np.absolute(output[:,:,unit]))
+        sc = a0.imshow(output[:,:,unit],extent=[xmin/1000, xmax/1000, ymin/1000, ymax/1000],origin='lower',
+                        clim=[-absMax,absMax],cmap='bwr')
+        a0.set_title('Unit {0}'.format(units[unit]))
+        a0.set_xlabel('mm')
+        a0.set_ylabel('mm')
+        plt.colorbar(sc)
+        plt.tight_layout()
+        plt.show()
+        plt.close()
+    return output
+    
+    
     
     
 ### helper functions below
