@@ -27,7 +27,7 @@ def importJRCLUST(filepath, annotation='single'):
     
     spikeAnnotations = S0['S0'].S_clu.csNote_clu
     
-    annotatedUnits = np.where(spikeAnnotations == 'single')[0]+1 # +1 to account for 1-indexing of jrclust output; jrc spikes that = 0 are not classified
+    annotatedUnits = np.where(spikeAnnotations == annotation)[0]+1 # +1 to account for 1-indexing of jrclust output; jrc spikes that = 0 are not classified
     
     goodSamples = S0['S0'].viTime_spk
     goodSpikes = S0['S0'].S_clu.viClu
