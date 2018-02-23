@@ -20,6 +20,11 @@ def importJRCLUST(filepath, annotation='single'):
         goodSpikes - ndarray of clusters
         goodSamples - ndarray of spike samples
         sampleRate - int sample rate in Hz
+        
+    ##Yurika's comment##
+    goodSpikes - assigning each spike to each unit
+    goodSamples - timestamp of each spike
+    
     """
     outDict = {}
 
@@ -71,6 +76,35 @@ def importDImat(filepath):
     DI0 = np.concatenate(DI0)
     DI1 = np.concatenate(DI1)
     return DI0, DI1
+
+def importAImat(filepath):
+    """
+    Yurika wrote this part:
+    Imports analog inputs saved as '*AnalogInputs.mat'
+    
+    input:
+        filepath - str with directory containing files
+    
+    output:
+        AI0, ndarray with analog channel 0
+        AI1, ndarray with analog channel 1
+    """
+    
+    aiFiles = glob.glob(filepath+'*AnalogInputs.mat')
+    aiFiles.sort(key=os.path.getmtime)
+    
+    
+    AI0 = [] ## only two digital inputs with the recording controller, should make this more adaptable in the future
+    AI1 = []
+    
+    for file in aiFiles:
+        print(file)
+        temp = scipy.io.loadmat(file)
+        AI0.append(temp['board_adc_data'][0])
+        AI1.append(temp['board_adc_data'][1])
+    AI0 = np.concatenate(AI0)
+    AI1 = np.concatenate(AI1)
+    return AI0, AI1
     
 def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, baseline=0, sample_rate=20000, fig_size=(10,4),
         heightRatio=[1,4]):
@@ -157,7 +191,7 @@ def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000, units=None, durat
         for stepSample, stepSpike in zip(samples[i], spikes[i]):
             psths[int(np.floor(stepSample/bin_samples)), np.where(units == stepSpike)[0][0]] += 1
 
-    psth_dict['psths'] = psths#/bin_size/len(samples) # in units of Hz
+    psth_dict['psths'] = psths/bin_size/len(samples) # in units of Hz
     psth_dict['bin_size'] = bin_size # in s
     psth_dict['sample_rate'] = sample_rate # in Hz
     psth_dict['xaxis'] = np.arange(0,maxBin,bin_size)
