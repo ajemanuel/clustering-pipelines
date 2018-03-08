@@ -70,52 +70,53 @@ def importDImat(filepath, sortOption='mtime'):
     else:
         print('Invalid sortOption')
         return -1
-    DI = [] ## only two digital inputs with the recording controller, should make this more adaptable in the future
+        
+    DI = []
     
     for file in diFiles:
         print(file)
         temp = scipy.io.loadmat(file)
-<<<<<<< HEAD
         #print(temp['board_dig_in_data'].shape)
         DI.append(temp['board_dig_in_data'])
     DI = np.concatenate(DI,axis=1)
+    
     return DI
-=======
-        DI0.append(temp['board_dig_in_data'][0])
-        DI1.append(temp['board_dig_in_data'][1])
-    DI0 = np.concatenate(DI0)
-    DI1 = np.concatenate(DI1)
-    return DI0, DI1
 
-def importAImat(filepath):
+def importAImat(filepath, sortOption='mtime'):
     """
-    Yurika wrote this part:
+    Yurika wrote this part, modified by AE 3/8/18:
     Imports analog inputs saved as '*AnalogInputs.mat'
     
     input:
         filepath - str with directory containing files
-    
+        sortOption - str designating sorting method, options include 'mtime' or 'regexp'
+            if you use 'regexp' your current working diretory must include the *AnalogInputs.mat files
     output:
-        AI0, ndarray with analog channel 0
-        AI1, ndarray with analog channel 1
+        AI, ndarray with all analog channels
     """
     
-    aiFiles = glob.glob(filepath+'*AnalogInputs.mat')
-    aiFiles.sort(key=os.path.getmtime)
+    if sortOption == 'mtime':
+        diFiles = glob.glob(filepath+'*AnalogInputs.mat')
+        diFiles.sort(key=os.path.getmtime) # sorting by file creation time (may be problematic in mac or linux)
+    elif sortOption == 'regexp':
+        diFiles = glob.glob('*AnalogInputs.mat') # including full filepath results in regezp matches
+        diFiles.sort(key=lambda l: grp('[0-9]*D',l)) # regular expression finding string of numbers before D
+    else:
+        print('Invalid sortOption')
+        return -1
     
     
-    AI0 = [] ## only two digital inputs with the recording controller, should make this more adaptable in the future
-    AI1 = []
+    AI = []
     
     for file in aiFiles:
         print(file)
         temp = scipy.io.loadmat(file)
-        AI0.append(temp['board_adc_data'][0])
-        AI1.append(temp['board_adc_data'][1])
-    AI0 = np.concatenate(AI0)
-    AI1 = np.concatenate(AI1)
-    return AI0, AI1
->>>>>>> origin/master
+        #print(temp['board_dig_in_data'].shape)
+        AI.append(temp['board_dig_in_data'])
+    AI = np.concatenate(AI,axis=1)
+    return AI
+
+    
     
 def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, baseline=0, sample_rate=20000, fig_size=(10,4),
         heightRatio=[1,4]):
@@ -521,7 +522,7 @@ def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_wind
     
     
     
-### helper functions below
+###### helper functions below
 
 def grp(pat, txt):
     r = re.search(pat, txt)
