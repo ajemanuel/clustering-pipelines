@@ -44,33 +44,36 @@ def importJRCLUST(filepath, annotation='single'):
     
     
 
-def importDImat(filepath):
+def importDImat(filepath, sortOption='mtime'):
     """
     Imports digital inputs saved as '*DigitalInputs.mat'
     
     input:
         filepath - str with directory containing files
-    
+        sortOption - str designating sorting method, options include 'mtime' or 'regexp'
     output:
-        DI0, ndarray with digital channel 0
-        DI1, ndarray with digital channel 1
+        DI, ndarray with all digital channels
     """
     
-    diFiles = glob.glob(filepath+'*DigitalInputs.mat')
-    diFiles.sort(key=os.path.getmtime)
-    #diFiles.sort(key=lambda l: grp('[0-9]*D',l)) # regular expression finding string of numbers before D
     
-    DI0 = [] ## only two digital inputs with the recording controller, should make this more adaptable in the future
-    DI1 = []
+    if sortOption == 'mtime':
+        diFiles = glob.glob(filepath+'*DigitalInputs.mat')
+        diFiles.sort(key=os.path.getmtime) # sorting by file creation time (may be problematic in mac or linux)
+    elif sortOption == 'regexp':
+        diFiles = glob.glob('*DigitalInputs.mat') # including full filepath results in regezp matches
+        diFiles.sort(key=lambda l: grp('[0-9]*D',l)) # regular expression finding string of numbers before D
+    else:
+        print('Invalid sortOption')
+        return -1
+    DI = [] ## only two digital inputs with the recording controller, should make this more adaptable in the future
     
     for file in diFiles:
         print(file)
         temp = scipy.io.loadmat(file)
-        DI0.append(temp['board_dig_in_data'][0])
-        DI1.append(temp['board_dig_in_data'][1])
-    DI0 = np.concatenate(DI0)
-    DI1 = np.concatenate(DI1)
-    return DI0, DI1
+        #print(temp['board_dig_in_data'].shape)
+        DI.append(temp['board_dig_in_data'])
+    DI = np.concatenate(DI,axis=1)
+    return DI
     
 def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, baseline=0, sample_rate=20000, fig_size=(10,4),
         heightRatio=[1,4]):
@@ -155,7 +158,8 @@ def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000, units=None, durat
     psth_dict = {}
     for i in range(len(samples)):
         for stepSample, stepSpike in zip(samples[i], spikes[i]):
-            psths[int(np.floor(stepSample/bin_samples)), np.where(units == stepSpike)[0][0]] += 1
+            if stepSpike in units:
+                psths[int(np.floor(stepSample/bin_samples)), np.where(units == stepSpike)[0][0]] += 1
 
     psth_dict['psths'] = psths#/bin_size/len(samples) # in units of Hz
     psth_dict['bin_size'] = bin_size # in s
@@ -230,13 +234,13 @@ def plotActualPositions(filename, setup='alan', center=True, labelPositions=True
     a0.set_aspect('equal')
     
     
-def plotGridResponses(filename, windowOnset, windowDur, samples, spikes, units='all', numRepeats=3, numSteps=1, sampleRate=20000, save=False, force=0, center=True):
+def plotGridResponses(filename, window, bs_window, samples, spikes, units='all', numRepeats=3, numSteps=1, sampleRate=20000, save=False, force=0, center=True):
     """
     Plots each unit's mechanical spatial receptive field.
     Inputs:
     filename - str, .mat filename produced by indentOnGrid
-    windowOnset - time of windowOnset in sweep in s
-    windoDur - duration of window in s
+    window - sequence, len 2; start and stop of window of interest
+    bs_window - sequence, len 2; start and stop of baseline window
     samples - list of samples at which spikes are detected for each sweep
     spikes - list of spike IDs corresponding to samples in goodsamples_sweeps
     units - list of units to plot or str = 'all'
@@ -244,6 +248,9 @@ def plotGridResponses(filename, windowOnset, windowDur, samples, spikes, units='
     
     Output is a plot.
     """
+    if window[1]-window[0] is not bs_window[1]-bs_window[0]:
+        print('Warning: Window and baseline are not same size.')
+    
     gridIndent = scipy.io.loadmat(filename)
     try:
         gridPosActual = gridIndent['grid_positions_actual'] # 
@@ -257,9 +264,10 @@ def plotGridResponses(filename, windowOnset, windowDur, samples, spikes, units='
     offsety = np.median(gridPosActual[0][1])
     offsets = (offsetx, offsety)
     
-    gridSpikes = extractSpikesInWindow(windowOnset, windowDur, samples, spikes, sampleRate=sampleRate)
+    gridSpikes = extractSpikesInWindow(window, samples, spikes, sampleRate=sampleRate)
+    gridSpikesBS = extractSpikesInWindow(bs_window, samples, spikes, sampleRate=sampleRate)
     
-    if type(units) is not str: # untis != 'all'
+    if type(units) is not str: # units != 'all'
         for unit in units:
             positionResponses = generatePositionResponses(gridPosActual, gridSpikes, numRepeats=numRepeats, numSteps=numSteps, unit=unit)
             plotPositionResponses(positionResponses, gridPosActual, force=force, save=save, unit=unit, center=center)
@@ -267,11 +275,10 @@ def plotGridResponses(filename, windowOnset, windowDur, samples, spikes, units='
         positionResponses = generatePositionResponses(gridPosActual, gridSpikes, numRepeats=numRepeats, numSteps=numSteps)
         plotPositionResponses(positionResponses, gridPosActual, force=force, save=save, center=center)
     
-def extractSpikesInWindow(windowOnset, windowDur, samples, spikes, sampleRate=20000):
+def extractSpikesInWindow(window, samples, spikes, sampleRate=20000):
     """
     Inputs:
-    windowOnset = time of windowOnset in sweep in s
-    windoDur = duration of window in s
+    window = sequence, len 2; start and stop of window in s
     samples = list of samples at which spikes are detected for each sweep
     spikes = list of spike IDs corresponding to samples in goodsamples_sweeps
     sampleRate = sample rate in Hz, defaults to 20000
@@ -280,8 +287,8 @@ def extractSpikesInWindow(windowOnset, windowDur, samples, spikes, sampleRate=20
     spikesOut - list of spikes in that window for each sweep
     
     """
-    windowOnsetinSamples = windowOnset*sampleRate # in samples
-    windowDurinSamples =  windowDur*sampleRate # in samples
+    windowOnsetinSamples = window[0]*sampleRate # in samples
+    windowDurinSamples =  (window[1]-window[0])*sampleRate # in samples
     spikesOut = []
     i = 0
     for spikeSample, spike in zip(samples,spikes):
