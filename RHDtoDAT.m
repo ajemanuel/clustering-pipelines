@@ -46,7 +46,7 @@ fprintf('Finished\n')
 %% Copy probe file to directory (for KlustaKwik clustering)
 
 if strcmp(prb,'poly2')
-    copyfile(fullfile(clusteringPath, 'A1x32-Poly2-5mm-50s-177-A32.prb'), fullfile(dataPath,'alldata','A1x32-Poly2-5mm-50s-177-A32.prb'))
+    copyfile(fullfile(clusteringPath, 'Klusta', 'A1x32-Poly2-5mm-50s-177-A32.prb'), fullfile(dataPath,'alldata','A1x32-Poly2-5mm-50s-177-A32.prb'))
     prb_file = 'A1x32-Poly2-5mm-50s-177-A32.prb';
 end
 

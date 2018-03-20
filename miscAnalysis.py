@@ -17,13 +17,9 @@ def importJRCLUST(filepath, annotation='single'):
             -- in the future, increase this functionality
         
     output: Dict with keys
-        goodSpikes - ndarray of clusters
-        goodSamples - ndarray of spike samples
+        goodSpikes - ndarray of clusters (unit identities of spikes)
+        goodSamples - ndarray of spike samples (time of spike)
         sampleRate - int sample rate in Hz
-        
-    ##Yurika's comment##
-    goodSpikes - assigning each spike to each unit
-    goodSamples - timestamp of each spike
     
     """
     outDict = {}
@@ -32,8 +28,11 @@ def importJRCLUST(filepath, annotation='single'):
     
     spikeAnnotations = S0['S0'].S_clu.csNote_clu
     
-    annotatedUnits = np.where(spikeAnnotations == annotation)[0]+1 # +1 to account for 1-indexing of jrclust output; jrc spikes that = 0 are not classified
-    
+    try:
+        annotatedUnits = np.where(spikeAnnotations == annotation)[0]+1 # +1 to account for 1-indexing of jrclust output; jrc spikes that = 0 are not classified
+    except(FutureWarning):
+        print('Not all units are annotated (FutureWarning triggered).')
+        pass
     goodSamples = S0['S0'].viTime_spk
     goodSpikes = S0['S0'].S_clu.viClu
     
@@ -111,8 +110,8 @@ def importAImat(filepath, sortOption='mtime'):
     for file in aiFiles:
         print(file)
         temp = scipy.io.loadmat(file)
-        #print(temp['board_dig_in_data'].shape)
-        AI.append(temp['board_dig_in_data'])
+        #print(temp['board_adc_data'].shape)
+        AI.append(temp['board_adc_data'])
     AI = np.concatenate(AI,axis=1)
     return AI
 
@@ -154,6 +153,7 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, b
         sweepsamples = sweepsamples[(sweepsamples > ltime*sample_rate) & (sweepsamples < rtime*sample_rate)]
         a1.plot(sweepsamples/sample_rate-baseline,(sweepspikes+sweep-unit),'|',color='gray',markersize=2,mew=.5)
     a1.set_xlim(topxlim)
+    a1.set_ylim(0,len(samples))
     a1.set_xlabel('Time (s)')
     a1.set_ylabel('Step #')
     plt.tight_layout()
@@ -163,7 +163,7 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, b
     plt.show()
     plt.close()    
     
-def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000, units=None, duration=None, verbose=False):
+def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000, units=None, duration=None, verbose=False, rate=True, bs_window=[0, 0.25]):
     """
     Use this to convert spike time rasters into PSTHs with user-defined bin
     
@@ -173,9 +173,10 @@ def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000, units=None, durat
         spikes- list of ndarrays, spike cluster identities
         sample_rate - int, Hz, default = 20000
         units - None or sequence, list of units to include in PSTH
-        duration - None or float, duration of PSTH; if None, inferred from latest spike
+        duration - None or float, duration of PSTH; if None, inferred from last spike
         verbose - boolean, print information about psth during calculation
-        
+        rate - boolean; Output rate (divide by bin_size and # of trials) or total spikes per trial (divide by # trials only)
+        bs_window - sequence, len 2; window (in s) to use for baseline subtraction; default = [0, 0.25]
     output: dict with keys:
         psths - ndarray
         bin_size - float, same as input
@@ -191,26 +192,95 @@ def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000, units=None, durat
     else: 
         maxBin = duration
     
-    if units is None:  # if user does not specify which units to use (usually done with np.unique goodspikes)
+    if units is None:  # if user does not specify which units to use (usually done with np.unique(goodSpikes))
         units = np.unique(np.hstack(spikes))
     numUnits = len(units)
     
     psths = np.zeros([int(np.ceil(maxBin/bin_size)), numUnits])
     if verbose:
         print('psth size is',psths.shape)
-    psth_dict = {}
     for i in range(len(samples)):
         for stepSample, stepSpike in zip(samples[i], spikes[i]):
             if stepSpike in units:
                 psths[int(np.floor(stepSample/bin_samples)), np.where(units == stepSpike)[0][0]] += 1
-
-    psth_dict['psths'] = psths/bin_size/len(samples) # in units of Hz
+                
+                
+    psth_dict = {}
+    if rate:
+        psth_dict['psths'] = psths/bin_size/len(samples) # in units of Hz
+    else:
+        psth_dict['psths'] = psths/len(samples) # in units of spikes/trial in each bin
+    
+    psths_bs = np.copy(np.transpose(psth_dict['psths']))
+    for i,psth in enumerate(psths_bs):
+        tempMean = np.mean(psth[int(bs_window[0]/bin_size):int(bs_window[1]/bin_size)])
+        #print(tempMean)
+        psths_bs[i] = psth - tempMean
+    psth_dict['psths_bs'] = np.transpose(psths_bs)
     psth_dict['bin_size'] = bin_size # in s
     psth_dict['sample_rate'] = sample_rate # in Hz
     psth_dict['xaxis'] = np.arange(0,maxBin,bin_size)
     psth_dict['units'] = units
+    psth_dict['num_sweeps'] = len(samples)
     return psth_dict
     
+def calcStepMetrics(psth_dict, bsMean, bsSTD, on_window=(0.25,0.3), off_window=(0.75,0.80)):
+    """
+    Calculate the ON and OFF responses (sum of spikes in windows) as well as ratios from PSTHs.
+    Inputs:
+        psth_dict - dict; from makeSweepPSTH
+        bsMean - sequence; list of mean firing rate at baseline for each unit
+        bsSTD - sequence; list of std of firing rate at baseline for each unit
+        on_window - sequence, len 2; window for ON response
+        off_window - sequence len 2; window for OFF response
+    Outputs:
+        response_metrics - dict; containing:
+            * ON responses for each unit in psth
+            * OFF responses for each unit in psth
+            * ratio of OFF:ON responses for each unit in psth
+    
+    written by AE 3/9/2018
+    """
+    ## calculating parameters
+    threshold = bsMean + 3 * bsSTD
+    threshold[threshold<(2/psth_dict['bin_size']/psth_dict['num_sweeps'])] = 2/psth_dict['bin_size']/psth_dict['num_sweeps'] # artificial threshold requires at least two spikes in the same bin
+    on_window_bins = np.int8(np.array(on_window)/psth_dict['bin_size'])
+    off_window_bins = np.int8(np.array(off_window)/psth_dict['bin_size'])
+    
+    
+    
+    ## calculating metrics
+    ONresponsePresent = []
+    OFFresponsePresent = []
+    for i,thr in enumerate(threshold):
+        if np.any(psth_dict['psths'][on_window_bins[0]:on_window_bins[1],i] > thr):
+            ONresponsePresent.append(True)
+        else:
+            ONresponsePresent.append(False)
+        if np.any(psth_dict['psths'][off_window_bins[0]:off_window_bins[1],i] > thr):
+            OFFresponsePresent.append(True)
+        else:
+            OFFresponsePresent.append(False)
+    
+    ON_peaks = np.max(psth_dict['psths_bs'][on_window_bins[0]:on_window_bins[1],:],axis=0)
+    OFF_peaks = np.max(psth_dict['psths_bs'][off_window_bins[0]:off_window_bins[1],:],axis=0)
+    ON_sums = np.sum(psth_dict['psths_bs'][on_window_bins[0]:on_window_bins[1],:],axis=0)
+    OFF_sums = np.sum(psth_dict['psths_bs'][off_window_bins[0]:off_window_bins[1],:],axis=0)
+    ratios_sums = OFF_sums/ON_sums
+    ratios_peaks = OFF_peaks/ON_peaks
+    
+    ## Assigning to dictionary
+    response_metrics = {}
+    response_metrics['ONresponsePresent'] = ONresponsePresent
+    response_metrics['OFFresponsePresent'] = OFFresponsePresent
+    response_metrics['ON_peaks'] = ON_peaks
+    response_metrics['OFF_peaks'] = OFF_peaks
+    response_metrics['ON_sums'] = ON_sums
+    response_metrics['OFF_sums'] = OFF_sums
+    response_metrics['ratios_sums'] = ratios_sums
+    response_metrics['ratios_peaks'] = ratios_peaks
+    response_metrics['threshold'] = threshold
+    return response_metrics
     
     
     
@@ -261,37 +331,48 @@ def plotActualPositions(filename, setup='alan', center=True, labelPositions=True
 
         
     a0 = plt.axes()
-    a0.scatter(gridPosActual[0][0]*xmultiplier+xOffset,gridPosActual[0][1]*ymultiplier+yOffset,s=1500,marker='.')
-    
-    if labelPositions:
-        for i,pos in enumerate(np.transpose(gridPosActual[0])):
-            #print(pos)
-            a0.annotate(str(i+1),(pos[0]*xmultiplier+xOffset,pos[1]*ymultiplier+yOffset),
-                horizontalalignment='center',
-                verticalalignment='center',
-                color='white',
-                weight='bold')
+    if setup == 'alan':
+        a0.scatter(gridPosActual[0][0]*xmultiplier+xOffset,gridPosActual[0][1]*ymultiplier+yOffset,s=1500,marker='.')
+        if labelPositions:
+            for i,pos in enumerate(np.transpose(gridPosActual[0])):
+                #print(pos)
+                a0.annotate(str(i+1),(pos[0]*xmultiplier+xOffset,pos[1]*ymultiplier+yOffset),
+                    horizontalalignment='center',
+                    verticalalignment='center',
+                    color='white',
+                    weight='bold')
+    else:
+        a0.scatter(gridPosActual[0]*xmultiplier + xOffset, gridPosActual[1]*ymultiplier+yOffset,s=1500,marker='.')
+        if labelPositions:
+            for i,pos in enumerate(np.transpose(gridPosActual)):
+                #print(pos)
+                a0.annotate(str(i+1),(pos[0]*xmultiplier+xOffset,pos[1]*ymultiplier+yOffset),
+                    horizontalalignment='center',
+                    verticalalignment='center',
+                    color='white',
+                    weight='bold')
     
     a0.set_ylabel('mm')
     a0.set_xlabel('mm')
     a0.set_aspect('equal')
     
     
-def plotGridResponses(filename, window, bs_window, samples, spikes, units='all', numRepeats=3, numSteps=1, sampleRate=20000, save=False, force=0, center=True):
+def plotGridResponses(filename, window, bs_window, samples, spikes, goodSteps=None, units='all', numRepeats=3, numSteps=1, sampleRate=20000, save=False, force=0, center=True):
     """
     Plots each unit's mechanical spatial receptive field.
     Inputs:
-    filename - str, .mat filename produced by indentOnGrid
+    filename - str; .mat filename produced by indentOnGrid
     window - sequence, len 2; start and stop of window of interest
     bs_window - sequence, len 2; start and stop of baseline window
-    samples - list of samples at which spikes are detected for each sweep
-    spikes - list of spike IDs corresponding to samples in goodsamples_sweeps
-    units - list of units to plot or str = 'all'
-    sampleRate = sample rate in Hz, defaults to 20000
+    samples - sequence; list of samples at which spikes are detected for each sweep
+    spikes - sequence; list of spike IDs corresponding to samples in goodsamples_sweeps
+    goodSteps - None or sequence; list of steps to be included
+    units - sequence or str; sequence of units to plot or str = 'all'
+    sampleRate = int; sample rate in Hz, defaults to 20000
     
     Output is a plot.
     """
-    if window[1]-window[0] is not bs_window[1]-bs_window[0]:
+    if abs((window[1]-window[0]) - (bs_window[1] - bs_window[0])) > 1e-8: # requires some tolerance for float encoding; could also use np.isclose()
         print('Warning: Window and baseline are not same size.')
     
     gridIndent = scipy.io.loadmat(filename)
@@ -312,19 +393,25 @@ def plotGridResponses(filename, window, bs_window, samples, spikes, units='all',
     
     if type(units) is not str: # units != 'all'
         for unit in units:
-            positionResponses = generatePositionResponses(gridPosActual, gridSpikes, numRepeats=numRepeats, numSteps=numSteps, unit=unit)
-            plotPositionResponses(positionResponses, gridPosActual, force=force, save=save, unit=unit, center=center)
+            positionResponses = generatePositionResponses(gridPosActual, gridSpikes, numRepeats=numRepeats, numSteps=numSteps, unit=unit, goodSteps=goodSteps)
+            #print(positionResponses)
+            positionResponses_baseline = generatePositionResponses(gridPosActual, gridSpikesBS, numRepeats=numRepeats, numSteps=numSteps, unit=unit, goodSteps=goodSteps)
+            positionResponsesBS = []
+            for i, response in enumerate(positionResponses):
+                positionResponsesBS.append([i, response[1]-positionResponses_baseline[i][1]])
+            #print(positionResponsesBS)
+            plotPositionResponses(positionResponsesBS, gridPosActual, force=force, save=save, unit=unit, center=center)
     else:
-        positionResponses = generatePositionResponses(gridPosActual, gridSpikes, numRepeats=numRepeats, numSteps=numSteps)
+        positionResponses = generatePositionResponses(gridPosActual, gridSpikes, numRepeats=numRepeats, numSteps=numSteps, goodSteps=goodSteps)
         plotPositionResponses(positionResponses, gridPosActual, force=force, save=save, center=center)
     
 def extractSpikesInWindow(window, samples, spikes, sampleRate=20000):
     """
     Inputs:
     window = sequence, len 2; start and stop of window in s
-    samples = list of samples at which spikes are detected for each sweep
-    spikes = list of spike IDs corresponding to samples in goodsamples_sweeps
-    sampleRate = sample rate in Hz, defaults to 20000
+    samples = sequence; list of samples at which spikes are detected for each sweep
+    spikes = sequence; list of spike IDs corresponding to samples in goodsamples_sweeps
+    sampleRate = int; sample rate in Hz, defaults to 20000
     
     Returns:
     spikesOut - list of spikes in that window for each sweep
@@ -342,42 +429,53 @@ def extractSpikesInWindow(window, samples, spikes, sampleRate=20000):
         #         spike[(spikeSample > windowOnsetinSamples) & (spikeSample < windowOnsetinSamples + windowDurinSamples)],'|')
     return spikesOut
     
-def generatePositionResponses(gridPosActual, spikes, numRepeats=3, numSteps = 1, unit=None):
+def generatePositionResponses(gridPosActual, spikes, numRepeats=3, numSteps = 1, unit=None, goodSteps=None):
 
     gridPosActualAll = np.transpose(gridPosActual)
     gridPosActualAll = np.matlib.repmat(gridPosActualAll,numRepeats,1)
 
     positionIndex = np.arange(len(np.transpose(gridPosActual)))
     positionIndex = np.matlib.repmat(positionIndex,numSteps,numRepeats)
-    
+
     if numSteps > 1:
         positionIndex = np.transpose(positionIndex)
         positionIndex = positionIndex.reshape(positionIndex.shape[0]*positionIndex.shape[1])
-    
-            
+    if goodSteps is None:
+        goodSteps = np.ones(len(spikes)) ## all steps included    
+    if not len(spikes) == len(positionIndex):
+        print('Incorrect # of steps')
     positionResponse = {}
-
+    numGoodPositions = {}
     if unit:
-        print('Extracting position responses for unit {0}'.format(unit))
-        for sweep, index in zip(spikes,positionIndex):
-            positionResponse[index] = positionResponse.get(index,0) + len(sweep[1][sweep[1]==unit])
+        #print('Extracting position responses for unit {0}'.format(unit))
+        for sweep, index, good in zip(spikes,positionIndex,goodSteps):
+            if good:
+                positionResponse[index] = positionResponse.get(index,0) + len(sweep[1][sweep[1]==unit])
+                if index in numGoodPositions:
+                    numGoodPositions[index] += 1
+                else:
+                    numGoodPositions[index] = 1
             #print('\n position {0}'.format(index))
     else:
         print('Extracting position responses for all units')
-        for sweep, index in zip(spikes, positionIndex):
+        for sweep, index, good in zip(spikes, positionIndex, goodSteps):
             #print('\n position {0}'.format(index))
             #print('newspikes:',len(sweep[1]))
             #print('oldspikes:',positionResponse.get(index,0))
-            positionResponse[index] = positionResponse.get(index,0) + len(sweep[1]) #[sweep[1]==unit])
-                
+            if good:
+                positionResponse[index] = positionResponse.get(index,0) + len(sweep[1]) #[sweep[1]==unit])
+                if index in numGoodPositions:
+                    numGoodPositions[index] += 1
+                else:
+                    numGoodPositions[index] = 1
     positionResponses = []
     for index in positionResponse.keys():
-        positionResponses.append([index, positionResponse[index]])
+        positionResponses.append([index, positionResponse[index]/numGoodPositions[index]]) # normalize to # of positions
 
     return positionResponses
 
 
-def plotPositionResponses(positionResponses, gridPosActual, maxSpikes=None, force=0, save=False, unit=None, setup='alan', center=True):
+def plotPositionResponses(positionResponses, gridPosActual, force=0, save=False, unit=None, setup='alan', center=True):
     """
     plotting function for spatial receptive fields
     
@@ -400,9 +498,16 @@ def plotPositionResponses(positionResponses, gridPosActual, maxSpikes=None, forc
         yOffset = int(round(np.median(gridPosActual[1])))
         #print('yOffset = {0}'.format(yOffset))
     
+    minSpikes = min(np.transpose(positionResponses)[1])
+    maxSpikes = max(np.transpose(positionResponses)[1])
+    if abs(minSpikes) > abs(maxSpikes):
+        absMax = abs(minSpikes)
+    else:
+        absMax = abs(maxSpikes)
+    
     f0 = plt.figure()
     a0 = plt.axes()
-    sc = a0.scatter(gridPosActual[0]*xmultiplier+xOffset,gridPosActual[1]*ymultiplier+yOffset,c=np.transpose(positionResponses)[1], s=300, cmap='viridis', vmin=0,vmax=maxSpikes)
+    sc = a0.scatter(gridPosActual[0]*xmultiplier+xOffset,gridPosActual[1]*ymultiplier+yOffset,c=np.transpose(positionResponses)[1], s=300, cmap='bwr', vmin=-absMax,vmax=absMax)
     a0.set_aspect('equal')
     a0.set_xlabel('mm')
     a0.set_ylabel('mm')
@@ -411,9 +516,11 @@ def plotPositionResponses(positionResponses, gridPosActual, maxSpikes=None, forc
     else:
         a0.set_title('{0} mN'.format(force))
     cb = f0.colorbar(sc)
-    cb.set_label('spikes')
+    cb.set_label(r'$\Delta$ spikes per step')
     f0.tight_layout()
     if save: plt.savefig('positionResponse_unit{0}_{1}mN.png'.format(unit, force),transparent=True)
+
+
 
 ### Functions for plotting responses to optical random dot patterns
 
@@ -519,6 +626,31 @@ def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_wind
         plt.close()
     return output
     
+#### For Image Analysis
+
+def createDiffLine(video, cropx1, cropx2, cropy1, cropy2):
+    """
+    Binarizes video and returns a frame to frame difference trace.
+    Inputs:
+    video - pims object
+    cropx1 - int, crop pixel starting for first dimension
+    cropx2 - int, crop pixel ending for first dimension
+    cropy1 - int, crop pixel starting for second dimension
+    cropy2 - int, crop pixel ending for second dimension
+    Output: diffLine, ndarray; frame to frame differences
+    """
+    from skimage import filters
+    threshold = filters.threshold_otsu(video[0][cropx1:cropx2,cropy1:cropy2])
+    diffLine = []
+    for i, image in enumerate(video):
+        if i > 0:
+            binary1 = image[cropx1:cropx2,cropy1:cropy2] > threshold
+            binary2 = video[i-1][cropx1:cropx2,cropy1:cropy2] > threshold
+            diffLine.append(np.sum(binary1 != binary2))
+    diffLine = np.array(diffLine)
+    diffLine = np.append(diffLine, diffLine[-1]) ## duplicate the last value to make the array the right size
+    return diffLine
+            
     
     
     
