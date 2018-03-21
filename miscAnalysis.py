@@ -323,8 +323,8 @@ def plotActualPositions(filename, setup='alan', center=True, labelPositions=True
         xmultiplier = 1
         ymultiplier = 1
         if center:
-            xOffset = -int(round(np.median(gridPosActual[0][0])))
-            yOffset = -int(round(np.median(gridPosActual[0][1])))
+            xOffset = -((np.median(gridPosActual[0])))
+            yOffset = -((np.median(gridPosActual[1])))
         else:
             xOffset = 0
             yOffset = 0
@@ -357,7 +357,9 @@ def plotActualPositions(filename, setup='alan', center=True, labelPositions=True
     a0.set_aspect('equal')
     
     
-def plotGridResponses(filename, window, bs_window, samples, spikes, goodSteps=None, units='all', numRepeats=3, numSteps=1, sampleRate=20000, save=False, force=0, center=True):
+def plotGridResponses(filename, window, bs_window, samples, spikes,
+                        goodSteps=None, units='all', numRepeats=3, numSteps=1, sampleRate=20000,
+                        save=False, force=0, center=True, setup='alan'):
     """
     Plots each unit's mechanical spatial receptive field.
     Inputs:
@@ -380,13 +382,11 @@ def plotGridResponses(filename, window, bs_window, samples, spikes, goodSteps=No
         gridPosActual = gridIndent['grid_positions_actual'] # 
         gridPosActual = np.transpose(gridPosActual)
         if numRepeats > 1:        
-                gridPosActual = gridPosActual[0] # taking the first grid positions here -- perhaps change this in the future
+            gridPosActual = gridPosActual[0] # taking the first grid positions here -- perhaps change this in the future
+            
     except KeyError:
         print('File not from indentOnGrid')
         return -1
-    offsetx = np.median(gridPosActual[0][0])
-    offsety = np.median(gridPosActual[0][1])
-    offsets = (offsetx, offsety)
     
     gridSpikes = extractSpikesInWindow(window, samples, spikes, sampleRate=sampleRate)
     gridSpikesBS = extractSpikesInWindow(bs_window, samples, spikes, sampleRate=sampleRate)
@@ -400,10 +400,10 @@ def plotGridResponses(filename, window, bs_window, samples, spikes, goodSteps=No
             for i, response in enumerate(positionResponses):
                 positionResponsesBS.append([i, response[1]-positionResponses_baseline[i][1]])
             #print(positionResponsesBS)
-            plotPositionResponses(positionResponsesBS, gridPosActual, force=force, save=save, unit=unit, center=center)
+            plotPositionResponses(positionResponsesBS, gridPosActual, force=force, save=save, unit=unit, center=center, setup=setup)
     else:
         positionResponses = generatePositionResponses(gridPosActual, gridSpikes, numRepeats=numRepeats, numSteps=numSteps, goodSteps=goodSteps)
-        plotPositionResponses(positionResponses, gridPosActual, force=force, save=save, center=center)
+        plotPositionResponses(positionResponses, gridPosActual, force=force, save=save, center=center, setup=setup)
     
 def extractSpikesInWindow(window, samples, spikes, sampleRate=20000):
     """
@@ -489,14 +489,23 @@ def plotPositionResponses(positionResponses, gridPosActual, force=0, save=False,
     if setup == 'alan': # my axes are transposed
         xmultiplier = 1
         ymultiplier = -1
+        if center:
+            xOffset = -int(round(np.median(gridPosActual[0])))
+            #print('xOffset = {0}'.format(xOffset))
+            yOffset = int(round(np.median(gridPosActual[1])))
+            #print('yOffset = {0}'.format(yOffset))
+        else:
+            xOffset, yOffset = (0, 0)
     else:
         xmultiplier = 1
         ymultiplier = 1
-    if center:
-        xOffset = -int(round(np.median(gridPosActual[0])))
-        #print('xOffset = {0}'.format(xOffset))
-        yOffset = int(round(np.median(gridPosActual[1])))
-        #print('yOffset = {0}'.format(yOffset))
+        if center:
+            xOffset = -np.median(gridPosActual[0])
+            #print('xOffset = {0}'.format(xOffset))
+            yOffset = -np.median(gridPosActual[1])
+            #print('yOffset = {0}'.format(yOffset))
+        else:
+            xOffset, yOffset = (0, 0)
     
     minSpikes = min(np.transpose(positionResponses)[1])
     maxSpikes = max(np.transpose(positionResponses)[1])
