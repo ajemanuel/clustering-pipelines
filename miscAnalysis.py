@@ -151,7 +151,7 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, b
         sweepsamples = samples[sweep][spikes[sweep]==unit]
         sweepspikes = sweepspikes[(sweepsamples > ltime*sample_rate) & (sweepsamples < rtime*sample_rate)]
         sweepsamples = sweepsamples[(sweepsamples > ltime*sample_rate) & (sweepsamples < rtime*sample_rate)]
-        a1.plot(sweepsamples/sample_rate-baseline,(sweepspikes+sweep-unit),'|',color='gray',markersize=2,mew=.5)
+        a1.plot(sweepsamples/sample_rate-baseline,(sweepspikes+sweep-unit),'|',color='gray',markersize=3,mew=.5)
     a1.set_xlim(topxlim)
     a1.set_ylim(0,len(samples))
     a1.set_xlabel('Time (s)')
@@ -159,7 +159,7 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, b
     plt.tight_layout()
 
     if save:
-        plt.savefig('unit'+str(unit)+'gridSteps.png',transparent=True)
+        plt.savefig('unit'+str(unit)+'allSteps.png',transparent=True)
     plt.show()
     plt.close()    
     
@@ -516,7 +516,7 @@ def plotPositionResponses(positionResponses, gridPosActual, force=0, save=False,
     
     f0 = plt.figure()
     a0 = plt.axes()
-    sc = a0.scatter(gridPosActual[0]*xmultiplier+xOffset,gridPosActual[1]*ymultiplier+yOffset,c=np.transpose(positionResponses)[1], s=300, cmap='bwr', vmin=-absMax,vmax=absMax)
+    sc = a0.scatter(gridPosActual[0][:len(positionResponses)]*xmultiplier+xOffset,gridPosActual[1][:len(positionResponses)]*ymultiplier+yOffset,c=np.transpose(positionResponses)[1], s=300, cmap='bwr', vmin=-absMax,vmax=absMax)
     a0.set_aspect('equal')
     a0.set_xlabel('mm')
     a0.set_ylabel('mm')
