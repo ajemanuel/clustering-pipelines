@@ -45,8 +45,6 @@ def importJRCLUST(filepath, annotation='single'):
     outDict['goodTimes'] = goodSamples/S0['S0'].P.sRateHz
     
     return outDict
-    
-    
 
 def importDImat(filepath, sortOption='mtime'):
     """
@@ -115,8 +113,6 @@ def importAImat(filepath, sortOption='mtime'):
     AI = np.concatenate(AI,axis=1)
     return AI
 
-    
-    
 def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, baseline=0, sample_rate=20000, fig_size=(10,4),
         heightRatio=[1,4]):
     """
@@ -242,7 +238,7 @@ def calcStepMetrics(psth_dict, bsMean, bsSTD, on_window=(0.25,0.3), off_window=(
     written by AE 3/9/2018
     """
     ## calculating parameters
-    threshold = bsMean + 3 * bsSTD
+    threshold = bsMean + 2 * bsSTD
     threshold[threshold<(2/psth_dict['bin_size']/psth_dict['num_sweeps'])] = 2/psth_dict['bin_size']/psth_dict['num_sweeps'] # artificial threshold requires at least two spikes in the same bin
     on_window_bins = np.int8(np.array(on_window)/psth_dict['bin_size'])
     off_window_bins = np.int8(np.array(off_window)/psth_dict['bin_size'])
@@ -282,11 +278,9 @@ def calcStepMetrics(psth_dict, bsMean, bsSTD, on_window=(0.25,0.3), off_window=(
     response_metrics['threshold'] = threshold
     return response_metrics
     
-    
-    
 ### functions regarding indentOnGrid
 
-def plotActualPositions(filename, setup='alan', center=True, labelPositions=True):
+def plotActualPositions(filename, setup='alan', center=True, labelPositions=True, save=False):
     """
     Plot locations of grid indentation.
     
@@ -296,10 +290,10 @@ def plotActualPositions(filename, setup='alan', center=True, labelPositions=True
             current options: 'alan'
         center - boolean, specify whether to center grid on 0,0
         labelPositions - boolean, label order of the positions with text annotations
+        save - boolean, whether to save figure as image to current path
         
     No output, generates plots.
     """
-    
     gridIndent = scipy.io.loadmat(filename)
     try:
         gridPosActual = gridIndent['grid_positions_actual']
@@ -307,15 +301,16 @@ def plotActualPositions(filename, setup='alan', center=True, labelPositions=True
         print('File not from indentOnGrid')
         return -1
     gridPosActual = np.transpose(gridPosActual)
-    
     # plotting
+    if gridIndent['num_repetitions'][0][0] > 1:
+        gridPosActual = gridPosActual[0] ## take only the first round for now
     
     if setup == 'alan':  # displays the points so that they match the orientation of the image. 
         xmultiplier = 1  ## my stage is not transposed in x
         ymultiplier = -1  ## my stage is transposed in y
         if center:
-            xOffset = -int(round(np.median(gridPosActual[0][0])))
-            yOffset = int(round(np.median(gridPosActual[0][1])))
+            xOffset = -np.median(gridPosActual[0])
+            yOffset = np.median(gridPosActual[1])
         else:
             xOffset = 0
             yOffset = 0
@@ -328,13 +323,13 @@ def plotActualPositions(filename, setup='alan', center=True, labelPositions=True
         else:
             xOffset = 0
             yOffset = 0
-
-        
+    
+    f0 = plt.figure(figsize=(8,8))
     a0 = plt.axes()
     if setup == 'alan':
-        a0.scatter(gridPosActual[0][0]*xmultiplier+xOffset,gridPosActual[0][1]*ymultiplier+yOffset,s=1500,marker='.')
+        a0.scatter(gridPosActual[0]*xmultiplier+xOffset,gridPosActual[1]*ymultiplier+yOffset,s=1500,marker='.')
         if labelPositions:
-            for i,pos in enumerate(np.transpose(gridPosActual[0])):
+            for i,pos in enumerate(np.transpose(gridPosActual)):
                 #print(pos)
                 a0.annotate(str(i+1),(pos[0]*xmultiplier+xOffset,pos[1]*ymultiplier+yOffset),
                     horizontalalignment='center',
@@ -355,11 +350,13 @@ def plotActualPositions(filename, setup='alan', center=True, labelPositions=True
     a0.set_ylabel('mm')
     a0.set_xlabel('mm')
     a0.set_aspect('equal')
-    
-    
+    if save:
+        f0.savefig('gridPositions.png')
+
 def plotGridResponses(filename, window, bs_window, samples, spikes,
                         goodSteps=None, units='all', numRepeats=3, numSteps=1, sampleRate=20000,
-                        save=False, force=0, center=True, setup='alan'):
+                        save=False, force=0, center=True, setup='alan',
+                        doShuffle=True, numShuffles=10000):
     """
     Plots each unit's mechanical spatial receptive field.
     Inputs:
@@ -393,18 +390,40 @@ def plotGridResponses(filename, window, bs_window, samples, spikes,
     
     if type(units) is not str: # units != 'all'
         for unit in units:
-            positionResponses = generatePositionResponses(gridPosActual, gridSpikes, numRepeats=numRepeats, numSteps=numSteps, unit=unit, goodSteps=goodSteps)
-            #print(positionResponses)
-            positionResponses_baseline = generatePositionResponses(gridPosActual, gridSpikesBS, numRepeats=numRepeats, numSteps=numSteps, unit=unit, goodSteps=goodSteps)
-            positionResponsesBS = []
-            for i, response in enumerate(positionResponses):
-                positionResponsesBS.append([i, response[1]-positionResponses_baseline[i][1]])
-            #print(positionResponsesBS)
-            plotPositionResponses(positionResponsesBS, gridPosActual, force=force, save=save, unit=unit, center=center, setup=setup)
+            positionResponses, positionResponsesShuffle, numGoodPositions = generatePositionResponses(gridPosActual, gridSpikes,
+                                                                                                        numRepeats=numRepeats, numSteps=numSteps,
+                                                                                                        unit=unit, goodSteps=goodSteps,
+                                                                                                        doShuffle=doShuffle, numShuffles=numShuffles)
+            
+            positionResponses_baseline, positionResponseShuffle_baseline = generatePositionResponses(gridPosActual, gridSpikesBS, numRepeats=numRepeats,
+                                                                                                        numSteps=numSteps, unit=unit, goodSteps=goodSteps,
+                                                                                                        doShuffle=doShuffle, numShuffles=numShuffles)[:2]
+            
+            positionResponsesBS = {}
+            for index in positionResponses:
+                positionResponsesBS[index] = positionResponses[index] - positionResponses_baseline[index] ## subtract spikes in baseline window from # spikes in response window
+            
+            plotPositionResponses(positionResponsesBS, gridPosActual, force=force, save=save, unit=unit, center=center, setup=setup) ## edit plotPositionResponses
+            
+            if doShuffle:
+                positionResponsesBS_shuffles = {}
+                for index in positionResponsesShuffle:
+                    positionResponsesBS_shuffles[index] = positionResponsesShuffle[index] - positionResponseShuffle_baseline[index] ## subtract baselines
+                pValues = {}
+                for index in positionResponsesBS:
+                    pValues[index] = (np.sum(np.abs(positionResponsesBS_shuffles[index]) >= np.abs(positionResponsesBS[index]))+1)/numShuffles
+                plotPositionResponses(pValues, gridPosActual, force=force, save=save, unit=unit, center=center, setup=setup, pValues=True)
     else:
-        positionResponses = generatePositionResponses(gridPosActual, gridSpikes, numRepeats=numRepeats, numSteps=numSteps, goodSteps=goodSteps)
-        plotPositionResponses(positionResponses, gridPosActual, force=force, save=save, center=center, setup=setup)
-    
+        positionResponses, positionResponsesShuffle, numGoodPositions = generatePositionResponses(gridPosActual, gridSpikes, numRepeats=numRepeats, numSteps=numSteps, goodSteps=goodSteps,
+                                                                                                    doShuffle=doShuffle, numShuffles=numShuffles)
+        positionResponses_baseline, positionResponseShuffle_baseline = generatePositionResponses(gridPosActual, gridSpikesBS, numRepeats=numRepeats, numSteps=numSteps, goodSteps=goodSteps,
+                                                                                                    doShuffle=doShuffle, numShuffles=numShuffles)[:2]
+        positionResponsesBS = {}
+        for index in positionResponses:
+            positionResponsesBS[index] = positionResponses[index] - positionResponses_baseline[index] ## subtract spikes in baseline window from spikes in response window
+        
+        plotPositionResponses(positionResponsesBS, gridPosActual, force=force, save=save, center=center, setup=setup)
+
 def extractSpikesInWindow(window, samples, spikes, sampleRate=20000):
     """
     Inputs:
@@ -428,26 +447,47 @@ def extractSpikesInWindow(window, samples, spikes, sampleRate=20000):
         #plt.plot(spikeSample[(spikeSample > windowOnsetinSamples) & (spikeSample < windowOnsetinSamples + windowDurinSamples)],
         #         spike[(spikeSample > windowOnsetinSamples) & (spikeSample < windowOnsetinSamples + windowDurinSamples)],'|')
     return spikesOut
-    
-def generatePositionResponses(gridPosActual, spikes, numRepeats=3, numSteps = 1, unit=None, goodSteps=None):
 
+def generatePositionResponses(gridPosActual, spikes, numRepeats=3, numSteps=1, unit=None, goodSteps=None, doShuffle=True, numShuffles=10000):
+    """
+    Calculate the number of spikes belonging to each unit (or all units) evoked at each position. Also generate shuffled versions of these responses (for statistical analysis).
+    
+    Inputs:
+        gridPosActual - ndarray, sequence of positions from gridIndent*[0-9].mat file generated during experiment
+        spikes - list of spikes at each position
+        numRepeats - int,  # of times the whole grid was repeated
+        numSteps - int, # of times a step was repeated at each position of the grid
+        shuffle - bool, if True, will shuffle and return positionResponseShuffle
+        numShuffles - int, # of times to shuffle the positions
+     
+    Outpus:
+        positionResponse - dict, keys refer to position indices, int values are # of spikes per good step
+        positionResponseShuffle - dict, keys refer to position indices, ndarray values are arrays, len(numShuffles) of # of spikes per good step at each shuffle position
+            (none if doShuffle == False)
+        numGoodPositions - dict, keys refer to position indices, int values are # of steps included in that position
+    """
+    
+    
     gridPosActualAll = np.transpose(gridPosActual)
     gridPosActualAll = np.matlib.repmat(gridPosActualAll,numRepeats,1)
-
+    
     positionIndex = np.arange(len(np.transpose(gridPosActual)))
     positionIndex = np.matlib.repmat(positionIndex,numSteps,numRepeats)
-
+    
     if numSteps > 1:
         positionIndex = np.transpose(positionIndex)
-        positionIndex = positionIndex.reshape(positionIndex.shape[0]*positionIndex.shape[1])
+        positionIndex = positionIndex.reshape(positionIndex.shape[0]*positionIndex.shape[1]) # linearize
     if goodSteps is None:
-        goodSteps = np.ones(len(spikes)) ## all steps included    
+        goodSteps = np.ones(len(spikes)) ## all steps included
     if not len(spikes) == len(positionIndex):
         print('Incorrect # of steps')
+        print('len(spikes) = '+str(len(spikes)))
+        print('len(positionIndex) = '+str(len(positionIndex)))
     positionResponse = {}
     numGoodPositions = {}
+    
+    ## Extracting Actual Responses
     if unit:
-        #print('Extracting position responses for unit {0}'.format(unit))
         for sweep, index, good in zip(spikes,positionIndex,goodSteps):
             if good:
                 positionResponse[index] = positionResponse.get(index,0) + len(sweep[1][sweep[1]==unit])
@@ -455,33 +495,65 @@ def generatePositionResponses(gridPosActual, spikes, numRepeats=3, numSteps = 1,
                     numGoodPositions[index] += 1
                 else:
                     numGoodPositions[index] = 1
-            #print('\n position {0}'.format(index))
     else:
-        print('Extracting position responses for all units')
         for sweep, index, good in zip(spikes, positionIndex, goodSteps):
-            #print('\n position {0}'.format(index))
-            #print('newspikes:',len(sweep[1]))
-            #print('oldspikes:',positionResponse.get(index,0))
             if good:
-                positionResponse[index] = positionResponse.get(index,0) + len(sweep[1]) #[sweep[1]==unit])
+                positionResponse[index] = positionResponse.get(index,0) + len(sweep[1])
                 if index in numGoodPositions:
                     numGoodPositions[index] += 1
                 else:
                     numGoodPositions[index] = 1
-    positionResponses = []
-    for index in positionResponse.keys():
-        positionResponses.append([index, positionResponse[index]/numGoodPositions[index]]) # normalize to # of positions
+    for index in positionResponse:
+        positionResponse[index] = positionResponse[index]/numGoodPositions[index]
+    
+    
+    ## Extracting Shuffled Responses
+    
+    positionResponseShuffle  = {}
+    np.random.seed(20180407) # for replicability
+    if doShuffle:
+        if len(positionIndex) < 20:
+            if numShuffles > np.math.factorial(len(positionIndex)): ## unlikely, but just in case used a small grid
+                numShuffles = np.math.factorial(len(positionIndex))
+                print('numShuffles > possible permutations; assigning numShuffles to '+str(numShuffles))
+        
+        for shuffle in range(numShuffles):
+            positionIndexShuffle = np.random.permutation(positionIndex)
+            
+            tempResponse = {}
+            tempGoodPositions = {}
+            
+            if unit:
+                for sweep, index, good in zip(spikes, positionIndexShuffle, goodSteps):
+                    if good:
+                        tempResponse[index] = positionResponse.get(index,0) + len(sweep[1][sweep[1]==unit])
+                        tempGoodPositions[index] = tempGoodPositions.get(index,1) + 1   
+            else:
+                for sweep, index, good in zip(spikes, positionIndexShuffle, goodSteps):
+                    if good:
+                        tempResponse[index] = positionResponse.get(index,0) + len(sweep[1])
+                        tempGoodPositions[index] = tempGoodPositions.get(index,1) + 1
+            
+            if shuffle == 0:
+                for index in tempResponse:
+                    positionResponseShuffle[index] = [tempResponse[index]/tempGoodPositions[index]] ## making lists so I can append when shuffle not 0
+            else:
+                for index in positionResponseShuffle:
+                    positionResponseShuffle[index].append(tempResponse[index]/tempGoodPositions[index])
+        
+        for index in positionResponseShuffle:
+            positionResponseShuffle[index] = np.array(positionResponseShuffle[index])  ## making into ndarrays
+    else:
+        positionResponseShuffle = None
+    return positionResponse, positionResponseShuffle, numGoodPositions
 
-    return positionResponses
-
-
-def plotPositionResponses(positionResponses, gridPosActual, force=0, save=False, unit=None, setup='alan', center=True):
+def plotPositionResponses(positionResponses, gridPosActual, force=0, save=False, unit=None, setup='alan', center=True, pValues=False):
     """
     plotting function for spatial receptive fields
     
     inputs
-    positionResponses (from generatePositionResponses)
-    force in mN for titling and savename of graph
+    positionResponses - dict, from generatePositionResponses
+    force - int, in mN, for titling and savename of graph
     
     output: plot
     f0 is the plot handle
@@ -507,16 +579,24 @@ def plotPositionResponses(positionResponses, gridPosActual, force=0, save=False,
         else:
             xOffset, yOffset = (0, 0)
     
-    minSpikes = min(np.transpose(positionResponses)[1])
-    maxSpikes = max(np.transpose(positionResponses)[1])
+    positionResponse = []
+    for index in positionResponses:
+        positionResponse.append([index, positionResponses[index]])
+    positionResponse.sort(key=lambda pos: pos[0]) ## sort by position
+    
+    minSpikes = min(np.transpose(positionResponse)[1])
+    maxSpikes = max(np.transpose(positionResponse)[1])
     if abs(minSpikes) > abs(maxSpikes):
         absMax = abs(minSpikes)
     else:
         absMax = abs(maxSpikes)
     
-    f0 = plt.figure()
+    f0 = plt.figure(figsize=(6,6))
     a0 = plt.axes()
-    sc = a0.scatter(gridPosActual[0][:len(positionResponses)]*xmultiplier+xOffset,gridPosActual[1][:len(positionResponses)]*ymultiplier+yOffset,c=np.transpose(positionResponses)[1], s=300, cmap='bwr', vmin=-absMax,vmax=absMax)
+    if pValues: # plotting pValues rather than actual response
+        sc = a0.scatter(gridPosActual[0][:len(positionResponse)]*xmultiplier+xOffset,gridPosActual[1][:len(positionResponse)]*ymultiplier+yOffset,c=np.transpose(np.log10(positionResponse))[1], s=100, cmap='viridis_r')
+    else:
+        sc = a0.scatter(gridPosActual[0][:len(positionResponse)]*xmultiplier+xOffset,gridPosActual[1][:len(positionResponse)]*ymultiplier+yOffset,c=np.transpose(positionResponse)[1], s=100, cmap='bwr', vmin=-absMax,vmax=absMax)
     a0.set_aspect('equal')
     a0.set_xlabel('mm')
     a0.set_ylabel('mm')
@@ -524,12 +604,19 @@ def plotPositionResponses(positionResponses, gridPosActual, force=0, save=False,
         a0.set_title('Unit %d, %d mN'%(unit, force))
     else:
         a0.set_title('{0} mN'.format(force))
-    cb = f0.colorbar(sc)
-    cb.set_label(r'$\Delta$ spikes per step')
+    cb = f0.colorbar(sc,fraction=0.1,shrink=.5)
+    if pValues:
+        cb.set_label('log(p)')
+    else:
+        cb.set_label(r'$\Delta$ spikes per step')
     f0.tight_layout()
-    if save: plt.savefig('positionResponse_unit{0}_{1}mN.png'.format(unit, force),transparent=True)
-
-
+    if save: 
+        if pValues:
+            plt.savefig('positionPVALUE_unit{0}_{1}mN.png'.format(unit, force),transparent=True)
+        else:
+            plt.savefig('positionResponse_unit{0}_{1}mN.png'.format(unit, force),transparent=True)
+    plt.show()
+    plt.close()
 
 ### Functions for plotting responses to optical random dot patterns
 
@@ -585,11 +672,7 @@ def extractLaserPSTH(matFile, samples, spikes, sampleRate=20000):
         laserList.append(temp['laser'][start:int(start+temp['Fs']*temp['ISI'])])
     
     return samplesList, spikesList, laserList
-    
-    
-    
-    
-    
+
 def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_window, units):
     
     
@@ -634,7 +717,7 @@ def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_wind
         plt.show()
         plt.close()
     return output
-    
+
 #### For Image Analysis
 
 def createDiffLine(video, cropx1, cropx2, cropy1, cropy2):
@@ -646,7 +729,9 @@ def createDiffLine(video, cropx1, cropx2, cropy1, cropy2):
     cropx2 - int, crop pixel ending for first dimension
     cropy1 - int, crop pixel starting for second dimension
     cropy2 - int, crop pixel ending for second dimension
-    Output: diffLine, ndarray; frame to frame differences
+    
+    Output:
+    diffLine, ndarray; frame to frame differences
     """
     from skimage import filters
     threshold = filters.threshold_otsu(video[0][cropx1:cropx2,cropy1:cropy2])
