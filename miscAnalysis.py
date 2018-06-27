@@ -1,6 +1,7 @@
 # A collection of analyses that I routinely perform on silicon probe recordings.
 
 import scipy.io
+import scipy.ndimage
 import numpy as np
 import re
 import glob
@@ -20,7 +21,9 @@ def importJRCLUST(filepath, annotation='single'):
         goodSpikes - ndarray of clusters (unit identities of spikes)
         goodSamples - ndarray of spike samples (time of spike)
         sampleRate - int sample rate in Hz
-    
+        goodTimes - ndarray of spike times (in s)
+        unitPosXY - tuple of two ndarrays, (X center of mass, Y center of mass)
+        depthIndices - index of good units in the order of their depth
     """
     outDict = {}
 
@@ -43,7 +46,8 @@ def importJRCLUST(filepath, annotation='single'):
     outDict['goodSamples'] = goodSamples
     outDict['goodSpikes'] = goodSpikes
     outDict['goodTimes'] = goodSamples/S0['S0'].P.sRateHz
-    
+    outDict['unitPosXY'] = (S0['S0'].S_clu.vrPosX_clu[spikeAnnotations == 'single'],S0['S0'].S_clu.vrPosY_clu[spikeAnnotations == 'single']) 
+    outDict['depthIndices'] = np.argsort(S0['S0'].S_clu.vrPosY_clu[spikeAnnotations == 'single']) ## to get an index to use for sorting by depth
     return outDict
 
 def importDImat(filepath, sortOption='mtime'):
@@ -73,8 +77,13 @@ def importDImat(filepath, sortOption='mtime'):
     for file in diFiles:
         print(file)
         temp = scipy.io.loadmat(file)
-        #print(temp['board_dig_in_data'].shape)
-        DI.append(temp['board_dig_in_data'])
+        
+        if(temp['board_dig_in_data'].shape[0] == 1):  ## haven't checked if this works yet -- made for Anda
+            tempList = [temp['board_dig_in_data'][0], np.zeros(temp['board_dig_in_data'].shape[1])]
+            tempArray = np.array(tempList)
+            DI.append(tempArray)
+        else:
+            DI.append(temp['board_dig_in_data'])
     DI = np.concatenate(DI,axis=1)
     
     return DI
@@ -147,7 +156,7 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, b
         sweepsamples = samples[sweep][spikes[sweep]==unit]
         sweepspikes = sweepspikes[(sweepsamples > ltime*sample_rate) & (sweepsamples < rtime*sample_rate)]
         sweepsamples = sweepsamples[(sweepsamples > ltime*sample_rate) & (sweepsamples < rtime*sample_rate)]
-        a1.plot(sweepsamples/sample_rate-baseline,(sweepspikes+sweep-unit),'|',color='gray',markersize=3,mew=.5)
+        a1.plot(sweepsamples/sample_rate-baseline,(sweepspikes+sweep-unit),'|',color='k',markersize=3,mew=.5)
     a1.set_xlim(topxlim)
     a1.set_ylim(0,len(samples))
     a1.set_xlabel('Time (s)')
@@ -155,7 +164,7 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, b
     plt.tight_layout()
 
     if save:
-        plt.savefig('unit'+str(unit)+'allSteps.png',transparent=True)
+        plt.savefig('unit'+str(unit)+'allSteps.png',transparent=True,dpi=300)
     plt.show()
     plt.close()    
     
@@ -238,7 +247,7 @@ def calcStepMetrics(psth_dict, bsMean, bsSTD, on_window=(0.25,0.3), off_window=(
     written by AE 3/9/2018
     """
     ## calculating parameters
-    threshold = bsMean + 2 * bsSTD
+    threshold = bsMean + 3 * bsSTD
     threshold[threshold<(2/psth_dict['bin_size']/psth_dict['num_sweeps'])] = 2/psth_dict['bin_size']/psth_dict['num_sweeps'] # artificial threshold requires at least two spikes in the same bin
     on_window_bins = np.int8(np.array(on_window)/psth_dict['bin_size'])
     off_window_bins = np.int8(np.array(off_window)/psth_dict['bin_size'])
@@ -356,7 +365,7 @@ def plotActualPositions(filename, setup='alan', center=True, labelPositions=True
 def plotGridResponses(filename, window, bs_window, samples, spikes,
                         goodSteps=None, units='all', numRepeats=3, numSteps=1, sampleRate=20000,
                         save=False, force=0, center=True, setup='alan',
-                        doShuffle=True, numShuffles=10000):
+                        doShuffle=True, numShuffles=10000, size=300, saveString=''):
     """
     Plots each unit's mechanical spatial receptive field.
     Inputs:
@@ -368,7 +377,7 @@ def plotGridResponses(filename, window, bs_window, samples, spikes,
     goodSteps - None or sequence; list of steps to be included
     units - sequence or str; sequence of units to plot or str = 'all'
     sampleRate = int; sample rate in Hz, defaults to 20000
-    
+    saveString = string; string to add to filename, default ''
     Output is a plot.
     """
     if abs((window[1]-window[0]) - (bs_window[1] - bs_window[0])) > 1e-8: # requires some tolerance for float encoding; could also use np.isclose()
@@ -403,7 +412,7 @@ def plotGridResponses(filename, window, bs_window, samples, spikes,
             for index in positionResponses:
                 positionResponsesBS[index] = positionResponses[index] - positionResponses_baseline[index] ## subtract spikes in baseline window from # spikes in response window
             
-            plotPositionResponses(positionResponsesBS, gridPosActual, force=force, save=save, unit=unit, center=center, setup=setup) ## edit plotPositionResponses
+            plotPositionResponses(positionResponsesBS, gridPosActual, force=force, save=save, saveString=saveString, unit=unit, center=center, setup=setup, size=size) ## edit plotPositionResponses
             
             if doShuffle:
                 positionResponsesBS_shuffles = {}
@@ -412,7 +421,7 @@ def plotGridResponses(filename, window, bs_window, samples, spikes,
                 pValues = {}
                 for index in positionResponsesBS:
                     pValues[index] = (np.sum(np.abs(positionResponsesBS_shuffles[index]) >= np.abs(positionResponsesBS[index]))+1)/numShuffles
-                plotPositionResponses(pValues, gridPosActual, force=force, save=save, unit=unit, center=center, setup=setup, pValues=True)
+                plotPositionResponses(pValues, gridPosActual, force=force, save=save, saveString=saveString, unit=unit, center=center, setup=setup, pValues=True,size=size)
     else:
         positionResponses, positionResponsesShuffle, numGoodPositions = generatePositionResponses(gridPosActual, gridSpikes, numRepeats=numRepeats, numSteps=numSteps, goodSteps=goodSteps,
                                                                                                     doShuffle=doShuffle, numShuffles=numShuffles)
@@ -422,7 +431,7 @@ def plotGridResponses(filename, window, bs_window, samples, spikes,
         for index in positionResponses:
             positionResponsesBS[index] = positionResponses[index] - positionResponses_baseline[index] ## subtract spikes in baseline window from spikes in response window
         
-        plotPositionResponses(positionResponsesBS, gridPosActual, force=force, save=save, center=center, setup=setup)
+        plotPositionResponses(positionResponsesBS, gridPosActual, force=force, save=save, saveString=saveString, center=center, setup=setup, size=size)
 
 def extractSpikesInWindow(window, samples, spikes, sampleRate=20000):
     """
@@ -547,14 +556,14 @@ def generatePositionResponses(gridPosActual, spikes, numRepeats=3, numSteps=1, u
         positionResponseShuffle = None
     return positionResponse, positionResponseShuffle, numGoodPositions
 
-def plotPositionResponses(positionResponses, gridPosActual, force=0, save=False, unit=None, setup='alan', center=True, pValues=False):
+def plotPositionResponses(positionResponses, gridPosActual, force=0, size=300, save=False, saveString='', unit=None, setup='alan', center=True, pValues=False):
     """
     plotting function for spatial receptive fields
     
     inputs
     positionResponses - dict, from generatePositionResponses
     force - int, in mN, for titling and savename of graph
-    
+    saveString - string, for filename saving, default ''
     output: plot
     f0 is the plot handle
     """
@@ -594,9 +603,9 @@ def plotPositionResponses(positionResponses, gridPosActual, force=0, save=False,
     f0 = plt.figure(figsize=(6,6))
     a0 = plt.axes()
     if pValues: # plotting pValues rather than actual response
-        sc = a0.scatter(gridPosActual[0][:len(positionResponse)]*xmultiplier+xOffset,gridPosActual[1][:len(positionResponse)]*ymultiplier+yOffset,c=np.transpose(np.log10(positionResponse))[1], s=100, cmap='viridis_r')
+        sc = a0.scatter(gridPosActual[0][:len(positionResponse)]*xmultiplier+xOffset,gridPosActual[1][:len(positionResponse)]*ymultiplier+yOffset,c=np.transpose(np.log10(positionResponse))[1], s=size, cmap='viridis_r')
     else:
-        sc = a0.scatter(gridPosActual[0][:len(positionResponse)]*xmultiplier+xOffset,gridPosActual[1][:len(positionResponse)]*ymultiplier+yOffset,c=np.transpose(positionResponse)[1], s=100, cmap='bwr', vmin=-absMax,vmax=absMax)
+        sc = a0.scatter(gridPosActual[0][:len(positionResponse)]*xmultiplier+xOffset,gridPosActual[1][:len(positionResponse)]*ymultiplier+yOffset,c=np.transpose(positionResponse)[1], s=size, cmap='bwr', vmin=-absMax,vmax=absMax)
     a0.set_aspect('equal')
     a0.set_xlabel('mm')
     a0.set_ylabel('mm')
@@ -612,9 +621,9 @@ def plotPositionResponses(positionResponses, gridPosActual, force=0, save=False,
     f0.tight_layout()
     if save: 
         if pValues:
-            plt.savefig('positionPVALUE_unit{0}_{1}mN.png'.format(unit, force),transparent=True)
+            plt.savefig('positionPVALUE_unit{0}_{1}mN{2}.png'.format(unit, force, saveString),transparent=True)
         else:
-            plt.savefig('positionResponse_unit{0}_{1}mN.png'.format(unit, force),transparent=True)
+            plt.savefig('positionResponse_unit{0}_{1}mN{2}.png'.format(unit, force, saveString),transparent=True)
     plt.show()
     plt.close()
 
@@ -632,8 +641,11 @@ def extractLaserPositions(matFile):
     """
     
     voltageToDistance = 3.843750000000000e+03  # calibration for alan's rig with thorlabs scan mirrors
-    temp = scipy.io.loadmat(matFile, variable_names=['laser','x','y'])
-    laser = temp['laser']
+    temp = scipy.io.loadmat(matFile, variable_names=['laser','lz1','x','y'])
+    try:
+        laser = temp['laser']
+    except(KeyError):
+        laser = temp['lz1'] ## old version
     x = temp['x']
     y = temp['y']
     positions = []
@@ -657,7 +669,10 @@ def extractLaserPSTH(matFile, samples, spikes, sampleRate=20000):
     
     
     temp = scipy.io.loadmat(matFile)
-    laserOnsets = np.where(temp['laser'][1:] > temp['laser'][:-1])[0]
+    try:
+        laserOnsets = np.where(temp['laser'][1:] > temp['laser'][:-1])[0]
+    except(KeyError):
+        laserOnsets = np.where(temp['lz1'][1:] > temp['lz1'][:-1])[0] ### old version of stim file
     duration = temp['ISI']
     
     samplesList = []
@@ -669,12 +684,25 @@ def extractLaserPSTH(matFile, samples, spikes, sampleRate=20000):
         end = int(adjStart + sampleRate * duration)
         samplesList.append(samples[(samples > adjStart) & (samples < end)] - adjStart)
         spikesList.append(spikes[(samples > adjStart) & (samples < end)])
-        laserList.append(temp['laser'][start:int(start+temp['Fs']*temp['ISI'])])
+        try:
+            laserList.append(temp['laser'][start:int(start+temp['Fs']*temp['ISI'])])
+        except(KeyError):
+            laserList.append(temp['lz1'][start:int(start+temp['Fs']*temp['ISI'])])
     
     return samplesList, spikesList, laserList
 
-def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_window, units):
-    
+def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_window, units, save=False, smoothBin=0):
+    """
+    matFile - string, path to file generated with randSquareOffset stimulus
+    samples - list, samples during stimulus
+    spikes - list, cluster identities during stimulus
+    binSize - float, size of spatial bin
+    window - sequence, len 2 - window of analysis (in ms)
+    bs_window - sequence, len 2 - spikes in this window subtracted from those in window ( in ms)
+    units - sequence - units to include
+    save - boolean, whether to save plot or not
+    smoothBin - float, size of gaussian filter for smoothing (in bin units), default=0, no smoothing
+    """
     
     samplesList, spikesList, laserList = extractLaserPSTH(matFile, samples, spikes)
     parameters = scipy.io.loadmat(matFile, variable_names=['edgeLength','offsetX','offsetY','ISI'])
@@ -699,11 +727,13 @@ def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_wind
                              (laserPositions[1] < ymin + binSizeMicron*(binxy[1]+1)))[0]
         if len(tempPositions > 0):
             tempPSTH = makeSweepPSTH(0.001,[samplesList[a] for a in tempPositions],[spikesList[a] for a in tempPositions],
-                units=units, duration=float(parameters['ISI']))
+                units=units, duration=float(parameters['ISI']), rate=False)
             
             for unit in range(numUnits):
                 output[binxy[0],binxy[1],unit] = np.mean(tempPSTH['psths'][window[0]:window[1],unit]) - np.mean(tempPSTH['psths'][bs_window[0]:bs_window[1],unit])
     for unit in range(numUnits):
+        if smoothBin > 0:
+            output[:,:,unit] = scipy.ndimage.gaussian_filter(output[:,:,unit],smoothBin)
         plt.figure(figsize=(4,4))
         a0 = plt.axes()
         absMax = np.amax(np.absolute(output[:,:,unit]))
@@ -712,8 +742,11 @@ def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_wind
         a0.set_title('Unit {0}'.format(units[unit]))
         a0.set_xlabel('mm')
         a0.set_ylabel('mm')
-        plt.colorbar(sc)
+        cb = plt.colorbar(sc,fraction=.03)
+        cb.set_label(r'$\Delta$ Rate (Hz)')
         plt.tight_layout()
+        if save:
+            plt.savefig('lasRFunit{0}.png'.format(units[unit]),dpi=300)
         plt.show()
         plt.close()
     return output
