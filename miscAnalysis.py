@@ -123,7 +123,7 @@ def importAImat(filepath, sortOption='mtime'):
     return AI
 
 def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, baseline=0, sample_rate=20000, fig_size=(10,4),
-        heightRatio=[1,4]):
+        heightRatio=[1,4], markerSize=3):
     """
     Generate plots with stimulus displayed at top and rasters below for individual units.
     
@@ -156,7 +156,7 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, b
         sweepsamples = samples[sweep][spikes[sweep]==unit]
         sweepspikes = sweepspikes[(sweepsamples > ltime*sample_rate) & (sweepsamples < rtime*sample_rate)]
         sweepsamples = sweepsamples[(sweepsamples > ltime*sample_rate) & (sweepsamples < rtime*sample_rate)]
-        a1.plot(sweepsamples/sample_rate-baseline,(sweepspikes+sweep-unit),'|',color='k',markersize=3,mew=.5)
+        a1.plot(sweepsamples/sample_rate-baseline,(sweepspikes+sweep-unit),'|',color='k',markersize=markerSize,mew=.5)
     a1.set_xlim(topxlim)
     a1.set_ylim(0,len(samples))
     a1.set_xlabel('Time (s)')
@@ -387,9 +387,8 @@ def plotGridResponses(filename, window, bs_window, samples, spikes,
     try:
         gridPosActual = gridIndent['grid_positions_actual'] # 
         gridPosActual = np.transpose(gridPosActual)
-        if numRepeats > 1:        
+        if gridIndent['num_repetitions'] > 1:        
             gridPosActual = gridPosActual[0] # taking the first grid positions here -- perhaps change this in the future
-            
     except KeyError:
         print('File not from indentOnGrid')
         return -1
@@ -477,8 +476,12 @@ def generatePositionResponses(gridPosActual, spikes, numRepeats=3, numSteps=1, u
     """
     
     
+    
     gridPosActualAll = np.transpose(gridPosActual)
-    gridPosActualAll = np.matlib.repmat(gridPosActualAll,numRepeats,1)
+    if numRepeats > 1:
+        gridPosActualAll = np.matlib.repmat(gridPosActualAll,numRepeats,1)
+    else:
+        gridPosActualAll = np.array(gridPosActualAll)
     
     positionIndex = np.arange(len(np.transpose(gridPosActual)))
     positionIndex = np.matlib.repmat(positionIndex,numSteps,numRepeats)
@@ -691,7 +694,7 @@ def extractLaserPSTH(matFile, samples, spikes, sampleRate=20000):
     
     return samplesList, spikesList, laserList
 
-def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_window, units, save=False, smoothBin=0):
+def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_window, units, save=False, saveString='', smoothBin=0):
     """
     matFile - string, path to file generated with randSquareOffset stimulus
     samples - list, samples during stimulus
@@ -701,6 +704,7 @@ def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_wind
     bs_window - sequence, len 2 - spikes in this window subtracted from those in window ( in ms)
     units - sequence - units to include
     save - boolean, whether to save plot or not
+    saveString - string, string appended to filename when saving
     smoothBin - float, size of gaussian filter for smoothing (in bin units), default=0, no smoothing
     """
     
@@ -746,7 +750,7 @@ def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_wind
         cb.set_label(r'$\Delta$ Rate (Hz)')
         plt.tight_layout()
         if save:
-            plt.savefig('lasRFunit{0}.png'.format(units[unit]),dpi=300)
+            plt.savefig('lasRFunit{0}{1}.png'.format(units[unit],saveString),dpi=300,transparent=True)
         plt.show()
         plt.close()
     return output
