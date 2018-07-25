@@ -320,6 +320,13 @@ if (data_present)
         fprintf(1, 'Allocating memory for data...\n');
     end
     
+    num_amplifier_samples = int32(num_amplifier_samples);
+    num_aux_input_samples = int32(num_aux_input_samples);
+    num_supply_voltage_samples = int32(num_supply_voltage_samples);
+    num_board_adc_samples = int32(num_board_adc_samples);
+    num_board_dig_in_samples = int32(num_board_dig_in_samples);
+    num_board_dig_out_samples = int32(num_board_dig_out_samples);
+    
     t_amplifier = zeros(1, num_amplifier_samples);
 
     amplifier_data = zeros(num_amplifier_channels, num_amplifier_samples);
