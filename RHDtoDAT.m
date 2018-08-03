@@ -93,7 +93,7 @@ fprintf('Finished\n')
 % fprintf(fid2,')\n');
 % 
 % st = fclose(fid2);
-% clear
+ clear
 
 
 
