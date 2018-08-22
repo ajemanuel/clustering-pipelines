@@ -42,12 +42,18 @@ def importJRCLUST(filepath, annotation='single'):
     goodSamples = goodSamples[np.isin(goodSpikes,annotatedUnits)]
     goodSpikes = goodSpikes[np.isin(goodSpikes,annotatedUnits)]
     
+    
+    
     outDict['sampleRate'] = S0['S0'].P.sRateHz
     outDict['goodSamples'] = goodSamples
     outDict['goodSpikes'] = goodSpikes
     outDict['goodTimes'] = goodSamples/S0['S0'].P.sRateHz
-    outDict['unitPosXY'] = (S0['S0'].S_clu.vrPosX_clu[spikeAnnotations == 'single'],S0['S0'].S_clu.vrPosY_clu[spikeAnnotations == 'single']) 
-    outDict['depthIndices'] = np.argsort(S0['S0'].S_clu.vrPosY_clu[spikeAnnotations == 'single']) ## to get an index to use for sorting by depth
+    outDict['unitPosXY'] = (S0['S0'].S_clu.vrPosX_clu[spikeAnnotations == annotation],S0['S0'].S_clu.vrPosY_clu[spikeAnnotations == annotation]) 
+    outDict['depthIndices'] = np.argsort(S0['S0'].S_clu.vrPosY_clu[spikeAnnotations == annotation]) ## to get an index to use for sorting by depth
+    outDict['tmrWav_raw_clu'] = S0['S0'].S_clu.tmrWav_raw_clu[:,:,spikeAnnotations == annotation]
+    outDict['tmrWav_spk_clu'] = S0['S0'].S_clu.tmrWav_spk_clu[:,:,spikeAnnotations == annotation]
+    
+    outDict['viSite_clu'] = S0['S0'].S_clu.viSite_clu[spikeAnnotations == annotation]
     return outDict
 
 def importDImat(filepath, sortOption='mtime'):
@@ -122,8 +128,9 @@ def importAImat(filepath, sortOption='mtime'):
     AI = np.concatenate(AI,axis=1)
     return AI
 
-def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, baseline=0, sample_rate=20000, fig_size=(10,4),
-        heightRatio=[1,4], markerSize=3):
+def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, saveString = '',
+                    baseline=0, sample_rate=20000, fig_size=(10,4),
+                    heightRatio=[1,4], markerSize=3,stimLabel='Force (mN)'):
     """
     Generate plots with stimulus displayed at top and rasters below for individual units.
     
@@ -149,7 +156,8 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, b
     topxlim = a0.get_xlim()
     a0.set_title('Unit '+str(unit))
     a0.set_xticks([])
-
+    a0.set_ylabel(stimLabel)
+    
     # Plot Rasters
     for sweep in range(len(samples)):
         sweepspikes = spikes[sweep][spikes[sweep]==unit]
@@ -164,7 +172,11 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, b
     plt.tight_layout()
 
     if save:
+<<<<<<< HEAD
         f.savefig('unit'+str(unit)+'allSteps.png',transparent=True,dpi=300)
+=======
+        plt.savefig('RasterUnit'+str(unit)+saveString+'.png',dpi=300)
+>>>>>>> 1960f32811309ad576b7c8e97d6dd07c3fd35ae7
     plt.show()
     plt.close()    
     
