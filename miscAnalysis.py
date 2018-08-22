@@ -102,11 +102,11 @@ def importAImat(filepath, sortOption='mtime'):
     """
     
     if sortOption == 'mtime':
-        diFiles = glob.glob(filepath+'*AnalogInputs.mat')
-        diFiles.sort(key=os.path.getmtime) # sorting by file creation time (may be problematic in mac or linux)
+        aiFiles = glob.glob(filepath+'*AnalogInputs.mat')
+        aiFiles.sort(key=os.path.getmtime) # sorting by file creation time (may be problematic in mac or linux)
     elif sortOption == 'regexp':
-        diFiles = glob.glob('*AnalogInputs.mat') # including full filepath results in regezp matches
-        diFiles.sort(key=lambda l: grp('[0-9]*D',l)) # regular expression finding string of numbers before D
+        aiFiles = glob.glob('*AnalogInputs.mat') # including full filepath results in regezp matches
+        aiFiles.sort(key=lambda l: grp('[0-9]*D',l)) # regular expression finding string of numbers before D
     else:
         print('Invalid sortOption')
         return -1
@@ -144,7 +144,7 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, b
     # Plot stimulus waveform
     f, (a0, a1) = plt.subplots(2,1,gridspec_kw={'height_ratios':heightRatio},figsize=fig_size)
     xaxis = np.arange(ltime-baseline,rtime-baseline,1/sample_rate)
-    for i, sweep in enumerate(stimulus):
+    for sweep in stimulus:
         a0.plot(xaxis,sweep[int(sample_rate*ltime):int(sample_rate*rtime)],linewidth=.5,color='gray') # add +5*i to the y axis to get separate traces
     topxlim = a0.get_xlim()
     a0.set_title('Unit '+str(unit))
@@ -164,7 +164,7 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, b
     plt.tight_layout()
 
     if save:
-        plt.savefig('unit'+str(unit)+'allSteps.png',transparent=True,dpi=300)
+        f.savefig('unit'+str(unit)+'allSteps.png',transparent=True,dpi=300)
     plt.show()
     plt.close()    
     
@@ -832,7 +832,7 @@ def randSingleAnalysis(matFile, samples, spikes, units,
         eventStarts = np.where(stim[1:,i] > stim[:-1,i])[0]
         temp_samples = []
         temp_spikes = []
-        temp_stim = []
+        #temp_stim = []
         for start in eventStarts:
             #temp_stim.append(stim[int(start - psthSize_samples/2):int(start+psthSize_samples/2)])
             tempStart = int(start - psthSize_samples/2)
