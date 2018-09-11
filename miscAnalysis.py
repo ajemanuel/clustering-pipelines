@@ -172,11 +172,7 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, s
     plt.tight_layout()
 
     if save:
-<<<<<<< HEAD
-        f.savefig('unit'+str(unit)+'allSteps.png',transparent=True,dpi=300)
-=======
         plt.savefig('RasterUnit'+str(unit)+saveString+'.png',dpi=300)
->>>>>>> 1960f32811309ad576b7c8e97d6dd07c3fd35ae7
     plt.show()
     plt.close()    
     
@@ -240,7 +236,76 @@ def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000, units=None, durat
     psth_dict['units'] = units
     psth_dict['num_sweeps'] = len(samples)
     return psth_dict
-    
+
+def calculateLatencyParameters(eventSamples, samples, spikes, units=None, sampleRate=20000):
+    """
+    Calculating latencies with distribution of first spikes following onset of stimulus
+
+    Inputs:
+        eventSamples - sequence; time (in samples) at which events start
+        samples - sequence; samples at which spike fires
+        spikes - sequence; unit firing spike at time corresponding to the same item in the samples sequence
+        units - sequence; units to include in analysis
+
+    Outputs:
+        Dictionary (outDict) containing the following keys
+        latencies - sequence of sequences; lists of latencies for each unit 
+        mean - sequence; mean latency for each unit
+        stdev - sequence; stdev of latency distribution for each unit
+        median - sequence; median latency for each unit
+        units - same as input, or if None, = np.unique(spikes)
+    """
+
+    if units == None:
+        units = np.unique(spikes)
+    outDict = {}
+    outDict['units'] = units
+
+    latencies = np.zeros([len(units),len(eventSamples)])
+    for i, unit in enumerate(units):
+        for j, sample in enumerate(eventSamples):
+            latencies[i,j] = samples[(samples > sample) & (spikes == unit)][0] ## take first spike fired by unit after eventSample
+    outDict['mean'] = np.mean(latencies,axis=0)
+    outDict['median'] = np.median(latencies,axis=0)
+    outDict['stdev'] = np.std(latencies,axis=0)
+    return outDict
+
+def calculateLatencyParametersSweeps(eventSample, samples_sweeps, spikes_sweeps, units=None, sampleRate=20000):
+    """
+    Calculating latencies with distribution of first spikes following onset of stimulus
+
+    Inputs:
+        eventSample - int; time (in samples) at which event start
+        samples_sweeps - sequence; lists of samples at which spikes fires
+        spikes_sweeps - sequence; lists of  unit firing spike at time corresponding to the same item in the samples sequence
+        units - sequence; units to include in analysis
+
+    Outputs:
+        Dictionary (outDict) containing the following keys
+        latencies - sequence of sequences; lists of latencies for each unit 
+        mean - sequence; mean latency for each unit
+        stdev - sequence; stdev of latency distribution for each unit
+        median - sequence; median latency for each unit
+        units - same as input, or if None, = np.unique(spikes)
+    """
+
+    if units == None:
+        units = np.unique(spikes)
+    outDict = {}
+    outDict['units'] = units
+
+    latencies = np.zeros([len(units),len(eventSamples)])
+    for i, unit in enumerate(units):
+        for j, samples, spikes in enumerate(zip(samples_sweep, spikes_sweep)):
+            latencies[i,j] = samples[(samples > eventSample) & (spikes == unit)][0] ## take first spike fired by unit after eventSample
+    outDict['mean'] = np.mean(latencies,axis=0)
+    outDict['median'] = np.median(latencies,axis=0)
+    outDict['stdev'] = np.std(latencies,axis=0)
+    return outDict
+
+
+
+
 def calcStepMetrics(psth_dict, bsMean, bsSTD, on_window=(0.25,0.3), off_window=(0.75,0.80)):
     """
     Calculate the ON and OFF responses (sum of spikes in windows) as well as ratios from PSTHs.
