@@ -8,7 +8,7 @@ import glob
 import os
 import matplotlib.pyplot as plt
 
-def importJRCLUST(filepath, annotation='single'):
+def importJRCLUST(filepath, annotation='single', depth=250):
     """
     Imports the features of the JrClust output I use most.
     
@@ -16,7 +16,7 @@ def importJRCLUST(filepath, annotation='single'):
         filepath - str with path to S0 filename
         annotation - str that indicates which spikes to include 'single' or 'multi'
             -- in the future, increase this functionality
-        
+        depth - int/float, depth of top electrode site, in microns (default 250 microns, my typical insertion depth of probe tip is 1100 microns)
     output: Dict with keys
         goodSpikes - ndarray of clusters (unit identities of spikes)
         goodSamples - ndarray of spike samples (time of spike)
@@ -24,6 +24,8 @@ def importJRCLUST(filepath, annotation='single'):
         goodTimes - ndarray of spike times (in s)
         unitPosXY - tuple of two ndarrays, (X center of mass, Y center of mass)
         depthIndices - index of good units in the order of their depth
+        depths - depth of site (taking into account depth of probe)
+        layers - the cortical layer to which the depth corresponds
     """
     outDict = {}
 
@@ -50,10 +52,40 @@ def importJRCLUST(filepath, annotation='single'):
     outDict['goodTimes'] = goodSamples/S0['S0'].P.sRateHz
     outDict['unitPosXY'] = (S0['S0'].S_clu.vrPosX_clu[spikeAnnotations == annotation],S0['S0'].S_clu.vrPosY_clu[spikeAnnotations == annotation]) 
     outDict['depthIndices'] = np.argsort(S0['S0'].S_clu.vrPosY_clu[spikeAnnotations == annotation]) ## to get an index to use for sorting by depth
-    outDict['tmrWav_raw_clu'] = S0['S0'].S_clu.tmrWav_raw_clu[:,:,spikeAnnotations == annotation]
-    outDict['tmrWav_spk_clu'] = S0['S0'].S_clu.tmrWav_spk_clu[:,:,spikeAnnotations == annotation]
+    outDict['tmrWav_raw_clu'] = np.transpose(S0['S0'].S_clu.tmrWav_raw_clu[:,:,spikeAnnotations == annotation])
+    outDict['tmrWav_spk_clu'] = np.transpose(S0['S0'].S_clu.tmrWav_spk_clu[:,:,spikeAnnotations == annotation])
     
-    outDict['viSite_clu'] = S0['S0'].S_clu.viSite_clu[spikeAnnotations == annotation]
+    outDict['viSite_clu'] = S0['S0'].S_clu.viSite_clu[spikeAnnotations == annotation] - 1 # subtract 1 for python indexing
+    
+    
+    ## calculating trough to peak time
+    spikeTroughPeak = []
+    for i in range(len(np.unique(goodSpikes))):
+        waveform = outDict['tmrWav_raw_clu'][i,outDict['viSite_clu'][i],:] ## extracts the waveform from the best spike
+        spikeTroughPeak.append(np.where(waveform[12:] == np.max(waveform[12:]))[0][0]) # for raw waveforms, trough occurs at sample 12, finding location of maximum post trough
+    spikeTroughPeak = np.array(spikeTroughPeak)/outDict['sampleRate'] # convert to s
+    outDict['spikeTroughPeak'] = spikeTroughPeak
+    
+    
+    ## calculating layer
+    depths = outDict['unitPosXY'][1] - 150
+    outDict['depths'] = depths
+    layer_demarcations = -np.array([119,416.5,535.5,952]) ## from post-hoc anatomy with DAPI/layer V labeled + DiI, appears to match well with depth of Layer IV optotagged units
+    layers = []
+    for d in depths:
+        if d > layer_demarcations[0]:
+            layers.append(1)
+        elif (d > layer_demarcations[1]) & (d < layer_demarcations[0]):
+            layers.append(2)
+        elif (d > layer_demarcations[2]) & (d < layer_demarcations[1]):
+            layers.append(4)
+        elif (d > layer_demarcations[3]) & (d < layer_demarcations[2]):
+            layers.append(5)
+        elif d < layer_demarcations[3]:
+            layers.append(6)
+    layers = np.array(layers)
+    outDict['layers'] = layers
+    
     return outDict
 
 def importDImat(filepath, sortOption='mtime'):
@@ -172,11 +204,7 @@ def plotStimRasters(stimulus, samples, spikes, unit, ltime, rtime, save=False, s
     plt.tight_layout()
 
     if save:
-<<<<<<< HEAD
-        f.savefig('unit'+str(unit)+'allSteps.png',transparent=True,dpi=300)
-=======
         plt.savefig('RasterUnit'+str(unit)+saveString+'.png',dpi=300)
->>>>>>> 1960f32811309ad576b7c8e97d6dd07c3fd35ae7
     plt.show()
     plt.close()    
     
@@ -219,9 +247,10 @@ def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000, units=None, durat
     for i in range(len(samples)):
         for stepSample, stepSpike in zip(samples[i], spikes[i]):
             if stepSpike in units:
-                psths[int(np.floor(stepSample/bin_samples)), np.where(units == stepSpike)[0][0]] += 1
-                
-                
+                if int(np.floor(stepSample/bin_samples)) == psths.shape[0]:
+                    psths[int(np.floor(stepSample/bin_samples))-1, np.where(units == stepSpike)[0][0]] += 1 ## for the rare instance when a spike is detected at the last sample of a sweep
+                else:
+                    psths[int(np.floor(stepSample/bin_samples)), np.where(units == stepSpike)[0][0]] += 1
     psth_dict = {}
     if rate:
         psth_dict['psths'] = psths/bin_size/len(samples) # in units of Hz
@@ -405,11 +434,20 @@ def plotGridResponses(filename, window, bs_window, samples, spikes,
         print('File not from indentOnGrid')
         return -1
     
+    
     gridSpikes = extractSpikesInWindow(window, samples, spikes, sampleRate=sampleRate)
     gridSpikesBS = extractSpikesInWindow(bs_window, samples, spikes, sampleRate=sampleRate)
-    
+    outDict = gridIndent # save all variables from the grid file
+    numX = int((gridIndent['max_x'] - gridIndent['min_x'])/gridIndent['grid_spacing'])+1
+    numY = int((gridIndent['max_y'] - gridIndent['min_y'])/gridIndent['grid_spacing'])+1
+    ind = []
+    for position in gridIndent['grid_positions']:
+        for i, position2 in enumerate(gridIndent['grid_positions_rand']):
+            if np.all(position == position2):
+                ind.append(i) ## ind is a an index that can reorder the position responses for making a matrix
     if type(units) is not str: # units != 'all'
         for unit in units:
+            outDict[unit] = {}
             positionResponses, positionResponsesShuffle, numGoodPositions = generatePositionResponses(gridPosActual, gridSpikes,
                                                                                                         numRepeats=numRepeats, numSteps=numSteps,
                                                                                                         unit=unit, goodSteps=goodSteps,
@@ -433,6 +471,14 @@ def plotGridResponses(filename, window, bs_window, samples, spikes,
                 for index in positionResponsesBS:
                     pValues[index] = (np.sum(np.abs(positionResponsesBS_shuffles[index]) >= np.abs(positionResponsesBS[index]))+1)/numShuffles
                 plotPositionResponses(pValues, gridPosActual, force=force, save=save, saveString=saveString, unit=unit, center=center, setup=setup, pValues=True,size=size)
+                outDict[unit]['pValue'] = pValues
+            outDict[unit]['positionResponsesBS'] = positionResponsesBS
+            posResp = []
+            for index in positionResponsesBS:
+                posResp.append([index, positionResponsesBS[index]])
+            posResp.sort(key=lambda pos: pos[0]) ## sort by position
+            matrix = np.reshape(np.transpose(posResp)[1][ind],[numX,numY])
+            outDict[unit]['matrix'] = np.transpose(matrix) ## this empirically matches the plotted output for my grids
     else:
         positionResponses, positionResponsesShuffle, numGoodPositions = generatePositionResponses(gridPosActual, gridSpikes, numRepeats=numRepeats, numSteps=numSteps, goodSteps=goodSteps,
                                                                                                     doShuffle=doShuffle, numShuffles=numShuffles)
@@ -443,6 +489,20 @@ def plotGridResponses(filename, window, bs_window, samples, spikes,
             positionResponsesBS[index] = positionResponses[index] - positionResponses_baseline[index] ## subtract spikes in baseline window from spikes in response window
         
         plotPositionResponses(positionResponsesBS, gridPosActual, force=force, save=save, saveString=saveString, center=center, setup=setup, size=size)
+        outDict['all'] = {}
+        outDict['all']['positionResponsesBS'] = positionResponsesBS
+        
+        posResp = []
+        for index in positionResponsesBS:
+            posResp.append([index, positionResponsesBS[index]])
+        posResp.sort(key=lambda pos: pos[0]) ## sort by position
+        matrix = np.reshape(np.transpose(posResp)[1][ind],[numX,numY])
+        
+        outDict['all']['matrix'] = np.transpose(matrix) ## this empirically matches the plotted output for my grids
+    
+    
+    
+    return outDict
 
 def extractSpikesInWindow(window, samples, spikes, sampleRate=20000):
     """
