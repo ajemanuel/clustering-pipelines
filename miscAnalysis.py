@@ -845,11 +845,14 @@ def createDiffLine(video, cropx1, cropx2, cropy1, cropy2):
     from skimage import filters
     threshold = filters.threshold_otsu(video[0][cropx1:cropx2,cropy1:cropy2])
     diffLine = []
+    numFrames = len(video)
     for i, image in enumerate(video):
         if i > 0:
             binary1 = image[cropx1:cropx2,cropy1:cropy2] > threshold
             binary2 = video[i-1][cropx1:cropx2,cropy1:cropy2] > threshold
             diffLine.append(np.sum(binary1 != binary2))
+        if i % 100 == 0:
+            print('on frame {0} of {1}'.format(i,numFrames))
     diffLine = np.array(diffLine)
     diffLine = np.append(diffLine, diffLine[-1]) ## duplicate the last value to make the array the right size
     return diffLine
