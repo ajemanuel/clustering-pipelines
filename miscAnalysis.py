@@ -316,18 +316,21 @@ def calculateLatencyParametersSweeps(eventSample, samples_sweeps, spikes_sweeps,
         median - sequence; median latency for each unit
         units - same as input, or if None, = np.unique(spikes)
     """
-    if units == None:
+    if units is None:
         units = np.unique(spikes)
     outDict = {}
     outDict['units'] = units
-    latencies = np.zeros([len(units),len(eventSamples)])
+    latencies = np.zeros([len(units),len(samples_sweeps)])
     for i, unit in enumerate(units):
-        for j, samples, spikes in enumerate(zip(samples_sweep, spikes_sweep)):
-            latencies[i,j] = samples[(samples > eventSample) & (spikes == unit)][0] ## take first spike fired by unit after eventSample
+        for j, (samples, spikes) in enumerate(zip(samples_sweeps, spikes_sweeps)):
+            try:
+                latencies[i,j] = (samples[(samples > eventSample) & (spikes == unit)][0] - eventSample)/sampleRate ## take first spike fired by unit after eventSample
+            except(IndexError): ## occurs if the unit doesn't spike between eventSample and end
+                latencies[i,j] = np.nan
     outDict['latencies'] = latencies
-    outDict['mean'] = np.mean(latencies,axis=0)
-    outDict['median'] = np.median(latencies,axis=0)
-    outDict['stdev'] = np.std(latencies,axis=0)
+    outDict['mean'] = np.nanmean(latencies,axis=1)
+    outDict['median'] = np.nanmedian(latencies,axis=1)
+    outDict['stdev'] = np.nanstd(latencies,axis=1)
     return outDict
 
 
