@@ -16,7 +16,8 @@ def importJRCLUST(filepath, annotation='single', depth=250):
         filepath - str with path to S0 filename
         annotation - str that indicates which spikes to include 'single' or 'multi'
             -- in the future, increase this functionality
-        depth - int/float, depth of top electrode site, in microns (default 250 microns, my typical insertion depth of probe tip is 1100 microns)
+        depth - int/float, depth of top electrode site for neuronexus_poly2.prb or depth of bottom electrode site for cnt_h4.prb,
+                in microns (default 250 microns, my typical insertion depth of neuronexus_poly2 probe tip is 1100 microns)
     output: Dict with keys
         goodSpikes - ndarray of clusters (unit identities of spikes)
         goodSamples - ndarray of spike samples (time of spike)
@@ -68,7 +69,7 @@ def importJRCLUST(filepath, annotation='single', depth=250):
 
 
     ## calculating layer
-    depths = outDict['unitPosXY'][1] - 150
+    depths = outDict['unitPosXY'][1] - depth
     outDict['depths'] = depths
     layer_demarcations = -np.array([119,416.5,535.5,952]) ## from post-hoc anatomy with DAPI/layer V labeled + DiI, appears to match well with depth of Layer IV optotagged units
     layers = []
@@ -285,6 +286,7 @@ def calculateLatencyParameters(eventSamples, samples, spikes, units=None, sample
         stdev - sequence; stdev of latency distribution for each unit
         median - sequence; median latency for each unit
         units - same as input, or if None, = np.unique(spikes)
+    Written by AE 9/26/18
     """
     if units == None:
         units = np.unique(spikes)
@@ -315,6 +317,7 @@ def calculateLatencyParametersSweeps(eventSample, samples_sweeps, spikes_sweeps,
         stdev - sequence; stdev of latency distribution for each unit
         median - sequence; median latency for each unit
         units - same as input, or if None, = np.unique(spikes)
+    Written by AE 9/26/18
     """
     if units is None:
         units = np.unique(spikes)
@@ -469,9 +472,9 @@ def plotActualPositions(filename, setup='alan', center=True, labelPositions=True
         f0.savefig('gridPositions.png')
 
 def plotGridResponses(filename, window, bs_window, samples, spikes,
-                        goodSteps=None, units='all', numRepeats=3, numSteps=1, sampleRate=20000,
+                        goodSteps=None, units='all', numRepeats=None, numSteps=1, sampleRate=20000,
                         save=False, force=0, center=True, setup='alan',
-                        doShuffle=True, numShuffles=10000, size=300, saveString=''):
+                        doShuffle=False, numShuffles=10000, size=300, saveString=''):
     """
     Plots each unit's mechanical spatial receptive field.
     Inputs:
@@ -482,14 +485,18 @@ def plotGridResponses(filename, window, bs_window, samples, spikes,
     spikes - sequence; list of spike IDs corresponding to samples in goodsamples_sweeps
     goodSteps - None or sequence; list of steps to be included
     units - sequence or str; sequence of units to plot or str = 'all'
-    sampleRate = int; sample rate in Hz, defaults to 20000
-    saveString = string; string to add to filename, default ''
+    sampleRate - int; sample rate in Hz, defaults to 20000
+    size - value; argument for scatter plot size of point
+    saveString - string; string to add to filename, default ''
     Output is a plot.
     """
     if abs((window[1]-window[0]) - (bs_window[1] - bs_window[0])) > 1e-8: # requires some tolerance for float encoding; could also use np.isclose()
         print('Warning: Window and baseline are not same size.')
 
+
     gridIndent = scipy.io.loadmat(filename)
+    if numRepeats is None:
+        numRepeats = int(gridIndent['num_repetitions'])
     try:
         gridPosActual = gridIndent['grid_positions_actual'] #
         gridPosActual = np.transpose(gridPosActual)
@@ -882,7 +889,7 @@ def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_wind
         plt.figure(figsize=(4,4))
         a0 = plt.axes()
         absMax = np.amax(np.absolute(output[:,:,unit]))
-        sc = a0.imshow(output[:,:,unit],extent=[xmin/1000, xmax/1000, ymin/1000, ymax/1000],origin='lower',
+        sc = a0.imshow(output[:,:,unit],extent=[ymin/1000, ymax/1000, xmin/1000, xmax/1000],origin='lower',
                         clim=[-absMax,absMax],cmap='bwr')
         a0.set_title('Unit {0}'.format(units[unit]))
         a0.set_xlabel('mm')
