@@ -271,35 +271,74 @@ def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000, units=None, durat
     psth_dict['num_sweeps'] = len(samples)
     return psth_dict
 
-def calculateLatencyParameters(eventSamples, samples, spikes, units=None, sampleRate=20000):
+def calculateLatencyParameters(eventSamples, baselinePeriod, samples, spikes, units=None, sampleRate=20000):
     """
     Calculating latencies with distribution of first spikes following onset of stimulus
     Inputs:
         eventSamples - sequence; time (in samples) at which events start
+        baselinePeriod - sequence; beginning and end of baseline period (in samples)
+            - alternatively a sequence of sequences, each sequence with a beginning and end for a baseline epoch
         samples - sequence; samples at which spike fires
         spikes - sequence; unit firing spike at time corresponding to the same item in the samples sequence
         units - sequence; units to include in analysis
     Outputs:
         Dictionary (outDict) containing the following keys
-        latencies - sequence of sequences; lists of latencies for each unit
+        latencies - ndarray; M units x N events latency array
+        latenciesBaseline - ndarray; M units x N baseline events latency array
         mean - sequence; mean latency for each unit
+        meanBaseline - sequence; mean baseline latency for each unit
         stdev - sequence; stdev of latency distribution for each unit
+        stdevBaseline - sequence; stdev of baseline latencies for each unit
         median - sequence; median latency for each unit
+        medianBaseline - sequence; median baseline latency for each unit
         units - same as input, or if None, = np.unique(spikes)
     Written by AE 9/26/18
+    updated to include baseline latency histogram 11/27/18
     """
-    if units == None:
+    if units is None:
         units = np.unique(spikes)
+    if isinstance(baselinePeriod[0],int): ## if only one baseline epoch
+        baselineSamples = np.random.rand(int((baselinePeriod[1]-baselinePeriod[0])/(0.1 * sampleRate))) # average event rate of 1 per 100 ms
+        baselineSamples *= (baselinePeriod[1] - baselinePeriod[0])
+        baselineSamples += baselinePeriod[0]
+        baselineSamples = np.int32(baselineSamples)
+    elif len(baselinePeriod[0]) == 2: ## if multiple baseline epochs
+        baselineSamples = []
+        for epoch in baselinePeriod:
+            temp = np.random.rand(int((epoch[1]-epoch[0])/(0.1 * sampleRate))) # average event rate of 1 per 100 ms
+            temp *= (epoch[1] - epoch[0]) # scaling to epoch
+            temp += epoch[0] # adjusting start
+            temp = np.int32(temp) # integers that correspond to samples
+            baselineSamples.append(temp)
+        baselineSamples = np.concatenate(baselineSamples)
+    else:
+        print('Baseline period incorrectly formatted, try again.')
+        return -1
     outDict = {}
     outDict['units'] = units
     latencies = np.zeros([len(units),len(eventSamples)])
+    print('Calculating Event Latencies')
     for i, unit in enumerate(units):
+        print('unit '+str(unit))
         for j, sample in enumerate(eventSamples):
-            latencies[i,j] = samples[(samples > sample) & (spikes == unit)][0] ## take first spike fired by unit after eventSample
+            latencies[i,j] = samples[(samples > sample) & (spikes == unit)][0] - sample ## take first spike fired by unit after eventSample
+
+    latenciesBaseline = np.zeros([len(units),len(baselineSamples)])
+    print('Calculating baseline latencies')
+    for i, unit in enumerate(units):
+        print('unit '+str(unit))
+        for j, sample in enumerate(baselineSamples):
+            latenciesBaseline[i,j] = samples[(samples > sample) & (spikes == unit)][0] - sample ## take first spike after baselineSample
+
     outDict['latencies'] = latencies
+    outDict['latenciesBaseline'] = latenciesBaseline
     outDict['mean'] = np.mean(latencies,axis=0)
+    outDict['meanBaseline'] = np.mean(latenciesBaseline,axis=0)
     outDict['median'] = np.median(latencies,axis=0)
+    outDict['medianBaseline'] = np.median(latenciesBaseline,axis=0)
     outDict['stdev'] = np.std(latencies,axis=0)
+    outDict['stdevBaseline'] = np.std(latenciesBaseline,axis=0)
+
     return outDict
 
 def calculateLatencyParametersSweeps(eventSample, samples_sweeps, spikes_sweeps, units=None, sampleRate=20000):
