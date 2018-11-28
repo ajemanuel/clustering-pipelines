@@ -321,25 +321,57 @@ def calculateLatencyParameters(eventSamples, baselinePeriod, samples, spikes, un
     for i, unit in enumerate(units):
         print('unit '+str(unit))
         for j, sample in enumerate(eventSamples):
-            latencies[i,j] = samples[(samples > sample) & (spikes == unit)][0] - sample ## take first spike fired by unit after eventSample
-
+            try:
+                latencies[i,j] = samples[(samples > sample) & (spikes == unit)][0] - sample ## take first spike fired by unit after eventSample
+            except IndexError: ## encounter IndexError if there is no spike after eventSample that matches
+                latencies[i,j] = np.nan
     latenciesBaseline = np.zeros([len(units),len(baselineSamples)])
     print('Calculating baseline latencies')
     for i, unit in enumerate(units):
         print('unit '+str(unit))
         for j, sample in enumerate(baselineSamples):
-            latenciesBaseline[i,j] = samples[(samples > sample) & (spikes == unit)][0] - sample ## take first spike after baselineSample
+            try:
+                latenciesBaseline[i,j] = samples[(samples > sample) & (spikes == unit)][0] - sample ## take first spike fired by unit after eventSample
+            except IndexError: ## encounter IndexError if there is no spike after eventSample that matches
+                latenciesBaseline[i,j] = np.nan
+
+    JSdivergences = np.zeros(len(units))
+    for i, (test, baseline) in enumerate(zip(latencies,latenciesBaseline)):
+        testHist = np.histogram(test[~np.isnan(test)]/sampleRate,bins=np.arange(0.0005,0.02,0.0005),density=False)[0]#/sum((test > 0.0005 ) & (test < 0.02))
+        testHist = testHist / sum((test/sampleRate > 0.0005) & (test/sampleRate < 0.02))
+        baselineHist = np.histogram(baseline[~np.isnan(baseline)]/sampleRate,bins=np.arange(0.0005,0.02,0.0005),density=False)[0]#/sum((baseline > 0.0005) & (baseline < 0.02))
+        baselineHist = baselineHist / sum((baseline/sampleRate > 0.0005) & (baseline/sampleRate < 0.02))
+        JSdivergences[i] = JSdiv(testHist,baselineHist)
 
     outDict['latencies'] = latencies
     outDict['latenciesBaseline'] = latenciesBaseline
-    outDict['mean'] = np.mean(latencies,axis=0)
-    outDict['meanBaseline'] = np.mean(latenciesBaseline,axis=0)
-    outDict['median'] = np.median(latencies,axis=0)
-    outDict['medianBaseline'] = np.median(latenciesBaseline,axis=0)
-    outDict['stdev'] = np.std(latencies,axis=0)
-    outDict['stdevBaseline'] = np.std(latenciesBaseline,axis=0)
+    outDict['mean'] = np.nanmean(latencies,axis=0)
+    outDict['meanBaseline'] = np.nanmean(latenciesBaseline,axis=0)
+    outDict['median'] = np.nanmedian(latencies,axis=0)
+    outDict['medianBaseline'] = np.nanmedian(latenciesBaseline,axis=0)
+    outDict['stdev'] = np.nanstd(latencies,axis=0)
+    outDict['stdevBaseline'] = np.nanstd(latenciesBaseline,axis=0)
+    outDict['JSdivergences'] = JSdivergences
 
     return outDict
+
+
+def JSdiv(P,Q):
+    """
+    JSDIV Jensen-Shannon divergence
+    D = JSDIV(P,1) calculates the Jensen-Shannon divergence of the two input distributions.
+    """
+
+    #KL-distnace
+    P2 = P[P*Q>0]
+    Q2 = Q[P*Q>0]
+    P2 = P2 / np.sum(P2)
+    Q2 = Q2 / np.sum(Q2)
+
+    D = np.sum(P2*np.log(P2/Q2))
+
+    return D
+
 
 def calculateLatencyParametersSweeps(eventSample, samples_sweeps, spikes_sweeps, units=None, sampleRate=20000):
     """
