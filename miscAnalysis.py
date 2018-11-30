@@ -106,7 +106,7 @@ def importDImat(filepath, sortOption='mtime'):
         diFiles.sort(key=os.path.getmtime) # sorting by file creation time (may be problematic in mac or linux)
     elif sortOption == 'regexp':
         diFiles = glob.glob('*DigitalInputs.mat') # including full filepath results in regezp matches
-        diFiles.sort(key=lambda l: grp('[0-9]*D',l)) # regular expression finding string of numbers before D
+        diFiles.sort(key=lambda l: grp('_[0-9]*D',l)) # regular expression finding string of numbers before D
     else:
         print('Invalid sortOption')
         return -1
@@ -294,6 +294,7 @@ def calculateLatencyParameters(eventSamples, baselinePeriod, samples, spikes, un
         units - same as input, or if None, = np.unique(spikes)
     Written by AE 9/26/18
     updated to include baseline latency histogram 11/27/18
+    updated to include Jensen-Shannon divergence calculations 11/28/18 (modified from Kepecs lab matlab code)
     """
     if units is None:
         units = np.unique(spikes)
@@ -360,6 +361,8 @@ def JSdiv(P,Q):
     """
     JSDIV Jensen-Shannon divergence
     D = JSDIV(P,1) calculates the Jensen-Shannon divergence of the two input distributions.
+
+    modified from Kepecs lab matlab code
     """
 
     #KL-distnace
