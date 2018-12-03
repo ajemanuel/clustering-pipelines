@@ -346,12 +346,12 @@ def calculateLatencyParameters(eventSamples, baselinePeriod, samples, spikes, un
 
     outDict['latencies'] = latencies
     outDict['latenciesBaseline'] = latenciesBaseline
-    outDict['mean'] = np.nanmean(latencies,axis=0)
-    outDict['meanBaseline'] = np.nanmean(latenciesBaseline,axis=0)
-    outDict['median'] = np.nanmedian(latencies,axis=0)
-    outDict['medianBaseline'] = np.nanmedian(latenciesBaseline,axis=0)
-    outDict['stdev'] = np.nanstd(latencies,axis=0)
-    outDict['stdevBaseline'] = np.nanstd(latenciesBaseline,axis=0)
+    outDict['mean'] = np.nanmean(latencies,axis=1)
+    outDict['meanBaseline'] = np.nanmean(latenciesBaseline,axis=1)
+    outDict['median'] = np.nanmedian(latencies,axis=1)
+    outDict['medianBaseline'] = np.nanmedian(latenciesBaseline,axis=1)
+    outDict['stdev'] = np.nanstd(latencies,axis=1)
+    outDict['stdevBaseline'] = np.nanstd(latenciesBaseline,axis=1)
     outDict['JSdivergences'] = JSdivergences
 
     return outDict
