@@ -287,13 +287,13 @@ def calculateLatencyParameters(eventSamples, baselinePeriod, samples, spikes, un
     Outputs:
         Dictionary (outDict) containing the following keys
         latencies - ndarray; M units x N events latency array
-        latenciesBaseline - ndarray; M units x N baseline events latency array
-        mean - sequence; mean latency for each unit
-        meanBaseline - sequence; mean baseline latency for each unit
-        stdev - sequence; stdev of latency distribution for each unit
-        stdevBaseline - sequence; stdev of baseline latencies for each unit
-        median - sequence; median latency for each unit
-        medianBaseline - sequence; median baseline latency for each unit
+        latenciesBaseline - ndarray; M units x N shuffles x O baseline events latency array
+        mean - ndarray; mean latency for each unit (M)
+        meanBaseline - ndarray; mean baseline latency for each unit (M) for each shuffle (N)
+        stdev - ndarray; stdev of latency distribution for each unit (M)
+        stdevBaseline - ndarray;  stdev of baseline latencies for each unit (M) for each shuffle (N)
+        median - ndarray; median latency for each unit (M)
+        medianBaseline - ndarray; median baseline latency for each unit (M) for each shuffle (N)
         units - same as input, or if None, = np.unique(spikes)
     Written by AE 9/26/18
     updated to include baseline latencies 11/27/18
@@ -309,46 +309,49 @@ def calculateLatencyParameters(eventSamples, baselinePeriod, samples, spikes, un
     print('Calculating Event Latencies')
     for i, unit in enumerate(units):
         print('unit '+str(unit))
+        unitSamples = samples[spikes == unit]
         for j, sample in enumerate(eventSamples):
             try:
-                latencies[i,j] = samples[(samples > sample) & (spikes == unit)][0] - sample ## take first spike fired by unit after eventSample
+                latencies[i,j] = unitSamples[np.searchsorted(unitSamples,sample)] - sample ## take first spike fired by unit after eventSample
             except IndexError: ## encounter IndexError if there is no spike after eventSample that matches
                 latencies[i,j] = np.nan
 
-    latenciesBaseline = np.zeros([len(units),numShuffles,len(eventSamples)])
+
+    print('Generating Baseline Samples')
+    np.random.seed(20181204)  # set random seed for reproducibility
+    baselineSamples = np.zeros((numShuffles,len(eventSamples))) ## pre-allocating matrix for baseline samples
+    for shuffle in range(numShuffles):
+        if isinstance(baselinePeriod[0],int): ## if only one baseline epoch
+            temp = np.random.rand(len(eventSamples)) # matching # of events for baseline and stimulus-evoked samples
+            temp *= (baselinePeriod[1] - baselinePeriod[0])
+            temp += baselinePeriod[0]
+            baselineSamples[shuffle,:] = np.int32(temp)
+        elif len(baselinePeriod[0]) == 2: ## if multiple baseline epochs
+            temp2=[]
+            for epoch in baselinePeriod:
+                temp = np.random.rand(len(eventSamples)/len(baselinePeriod)) # matching # of events for baseline and stimulus-evoked samples
+                temp *= (epoch[1] - epoch[0]) # scaling to epoch
+                temp += epoch[0] # adjusting start
+                temp = np.int32(temp) # integers that correspond to samples
+                temp2.append(temp)
+            baselineSamples[shuffle,:] = np.concatenate(temp2)
+        else:
+            print('Baseline period incorrectly formatted, try again.')
+            return -1
+
 
     print('Calculating Baseline Latencies')
+    latenciesBaseline = np.zeros([len(units),numShuffles,len(eventSamples)])
+
     for i, unit in enumerate(units):
         print('unit '+str(unit))
-        np.random.seed(20181204)  # set random seed so that we get the same baseline samples for each unit
+        unitSamples = samples[spikes == unit]
         for shuffle in range(numShuffles):
-            if isinstance(baselinePeriod[0],int): ## if only one baseline epoch
-                baselineSamples = np.random.rand(len(eventSamples)) # matching # of events for baseline and stimulus-evoked samples
-                baselineSamples *= (baselinePeriod[1] - baselinePeriod[0])
-                baselineSamples += baselinePeriod[0]
-                baselineSamples = np.int32(baselineSamples)
-            elif len(baselinePeriod[0]) == 2: ## if multiple baseline epochs
-                baselineSamples = []
-                for epoch in baselinePeriod:
-                    temp = np.random.rand(int((epoch[1]-epoch[0])/(0.1 * sampleRate))) # average event rate of 1 per 100 ms
-                    temp *= (epoch[1] - epoch[0]) # scaling to epoch
-                    temp += epoch[0] # adjusting start
-                    temp = np.int32(temp) # integers that correspond to samples
-                    baselineSamples.append(temp)
-                baselineSamples = np.concatenate(baselineSamples)
-            else:
-                print('Baseline period incorrectly formatted, try again.')
-                return -1
-
-
-            for j, sample in enumerate(baselineSamples):
+            for j, sample in enumerate(baselineSamples[shuffle,:]):
                 try:
-                    latenciesBaseline[i,shuffle,j] = samples[(samples > sample) & (spikes == unit)][0] - sample ## take first spike fired by unit after eventSample
-                except IndexError: ## encounter IndexError if there is no spike after eventSample that matches
-                    latenciesBaseline[i,shuffle,j] = np.nan
-
-
-
+                    latenciesBaseline[i,shuffle,j] = unitSamples[np.searchsorted(unitSamples,sample)] - sample
+                except IndexError:
+                     latenciesBaseline[i,shuffle,j] = np.nan
     JSdivergences = np.zeros((len(units),numShuffles+1,numShuffles+1))
     JSdivergences.fill(np.nan)
     histBins = np.arange(JSwindow_s[0],JSwindow_s[1],JSwindow_s[2])
@@ -357,13 +360,13 @@ def calculateLatencyParameters(eventSamples, baselinePeriod, samples, spikes, un
 
         test = latencies[i,:]
         testHist = np.histogram(test[~np.isnan(test)]/sampleRate,bins=histBins,density=False)[0]#/sum((test > 0.0005 ) & (test < 0.02))
-        testHist = testHist / sum((test/sampleRate >= JSwindow_s[0]) & (test/sampleRate <= JSwindow_s[1]))
+        testHist = testHist / sum((test[~np.isnan(test)]/sampleRate >= JSwindow_s[0]) & (test[~np.isnan(test)]/sampleRate <= JSwindow_s[1]))
 
         allHists = np.zeros((len(histBins)-1,numShuffles+1))
         for shuffle in range(numShuffles):
             baseline = latenciesBaseline[i,shuffle,:]
             baselineHist = np.histogram(baseline[~np.isnan(baseline)]/sampleRate,bins=histBins,density=False)[0]#/sum((baseline > 0.0005) & (baseline < 0.02))
-            baselineHist = baselineHist / sum((baseline/sampleRate >= JSwindow_s[0]) & (baseline/sampleRate <= JSwindow_s[1]))
+            baselineHist = baselineHist / sum((baseline[~np.isnan(baseline)]/sampleRate >= JSwindow_s[0]) & (baseline[~np.isnan(baseline)]/sampleRate <= JSwindow_s[1]))
             allHists[:,shuffle] = baselineHist
         allHists[:,-1] = testHist
 
@@ -371,7 +374,7 @@ def calculateLatencyParameters(eventSamples, baselinePeriod, samples, spikes, un
             D1 = allHists[:,k1]
             for k2 in np.arange(k1+1,numShuffles+1):
                 D2 = allHists[:,k2]
-                JSdivergences[i,k1,k2] = np.sqrt(JSdiv(D1,D2)*2) ## modified as modified in Kepecs lab code
+                JSdivergences[i,k1,k2] = np.sqrt(JSdiv(D1,D2)) ##  Kepecs lab code was equivalent to  np.sqrt(JSdiv(D1,D2)*2) , unsure why *2 multiplier included
 
     pValues = np.zeros(len(units))
     Idiffs = np.zeros(len(units))
@@ -379,14 +382,14 @@ def calculateLatencyParameters(eventSamples, baselinePeriod, samples, spikes, un
     for unit in range(len(units)):
         pValues[unit], Idiffs[unit] = makep(JSdivergences[unit,:,:],numShuffles+1)
 
-    outDict['latencies'] = latencies
-    outDict['latenciesBaseline'] = latenciesBaseline
-    outDict['mean'] = np.nanmean(latencies,axis=1)
-    outDict['meanBaseline'] = np.nanmean(latenciesBaseline,axis=2)
-    outDict['median'] = np.nanmedian(latencies,axis=1)
-    outDict['medianBaseline'] = np.nanmedian(latenciesBaseline,axis=2)
-    outDict['stdev'] = np.nanstd(latencies,axis=1)
-    outDict['stdevBaseline'] = np.nanstd(latenciesBaseline,axis=2)
+    outDict['latencies'] = latencies/sampleRate ## in s
+    outDict['latenciesBaseline'] = latenciesBaseline/sampleRate ## in s
+    outDict['mean'] = np.nanmean(outDict['latencies'],axis=1)
+    outDict['meanBaseline'] = np.nanmean(outDict['latenciesBaseline'],axis=2)
+    outDict['median'] = np.nanmedian(outDict['latencies'],axis=1)
+    outDict['medianBaseline'] = np.nanmedian(outDict['latenciesBaseline'],axis=2)
+    outDict['stdev'] = np.nanstd(outDict['latencies'],axis=1)
+    outDict['stdevBaseline'] = np.nanstd(outDict['latenciesBaseline'],axis=2)
     outDict['JSdivergences'] = JSdivergences
     outDict['pValues'] = pValues
     outDict['Idiffs'] = Idiffs
