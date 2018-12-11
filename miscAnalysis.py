@@ -947,13 +947,14 @@ def extractLaserPositions(matFile):
         positions.append((float(x[sample]*voltageToDistance), float(y[sample]*voltageToDistance)))
     return positions
 
-def extractLaserPSTH(matFile, samples, spikes, sampleRate=20000):
+def extractLaserPSTH(matFile, samples, spikes, duration=None, sampleRate=20000):
     """
     Make lists of samples and spikes at each laser pulse
     inputs:
         matFile - str, path to file made when stimulating
         samples - sequence of spike times
         spikes - sequence of cluster identities for each spike
+        duration - period to include after each spike (in s), default is ISI
     outputs:
         samplesList - list of lists of spike samples after each laser pulse
         spikesList - list of lists of cluster identity corresponding to samplesList
@@ -966,21 +967,22 @@ def extractLaserPSTH(matFile, samples, spikes, sampleRate=20000):
         laserOnsets = np.where(temp['laser'][1:] > temp['laser'][:-1])[0]
     except(KeyError):
         laserOnsets = np.where(temp['lz1'][1:] > temp['lz1'][:-1])[0] ### old version of stim file
-    duration = temp['ISI']
+    if duration is None:
+        duration = temp['ISI']
 
     samplesList = []
     spikesList = []
     laserList = []
 
     for start in laserOnsets:
-        adjStart = int(start * (sampleRate/temp['Fs']))
+        adjStart = int(start * (sampleRate/temp['Fs'])) ## adjusting the start in case the sample rates differ between nidaq and intan
         end = int(adjStart + sampleRate * duration)
         samplesList.append(samples[(samples > adjStart) & (samples < end)] - adjStart)
         spikesList.append(spikes[(samples > adjStart) & (samples < end)])
         try:
-            laserList.append(temp['laser'][start:int(start+temp['Fs']*temp['ISI'])])
+            laserList.append(temp['laser'][start:int(start+temp['Fs']*duration)])
         except(KeyError):
-            laserList.append(temp['lz1'][start:int(start+temp['Fs']*temp['ISI'])])
+            laserList.append(temp['lz1'][start:int(start+temp['Fs']*duration)])
 
     return samplesList, spikesList, laserList
 
