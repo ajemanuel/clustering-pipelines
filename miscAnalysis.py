@@ -27,6 +27,7 @@ def importJRCLUST(filepath, annotation='single', depth=250):
         depthIndices - index of good units in the order of their depth
         depths - depth of site (taking into account depth of probe)
         layers - the cortical layer to which the depth corresponds
+        units - list of all units included in goodSpikes
     """
     outDict = {}
 
@@ -46,7 +47,7 @@ def importJRCLUST(filepath, annotation='single', depth=250):
     goodSpikes = goodSpikes[np.isin(goodSpikes,annotatedUnits)]
 
 
-
+    outDict['units'] = np.unique(goodSpikes)
     outDict['sampleRate'] = S0['S0'].P.sRateHz
     outDict['goodSamples'] = goodSamples
     outDict['goodSpikes'] = goodSpikes
@@ -63,7 +64,10 @@ def importJRCLUST(filepath, annotation='single', depth=250):
     spikeTroughPeak = []
     for i in range(len(np.unique(goodSpikes))):
         waveform = outDict['tmrWav_raw_clu'][i,outDict['viSite_clu'][i],:] ## extracts the waveform from the best spike
-        spikeTroughPeak.append(np.where(waveform[12:] == np.max(waveform[12:]))[0][0]) # for raw waveforms, trough occurs at sample 12, finding location of maximum post trough
+        if S0['S0'].dimm_raw[0] == 81:
+            spikeTroughPeak.append(np.where(waveform[22:] == np.max(waveform[22:]))[0][0]) # trough occurs at sample 22 for raw waveforms with 81 samples
+        else:
+            spikeTroughPeak.append(np.where(waveform[12:] == np.max(waveform[12:]))[0][0]) # for raw waveforms with 41 samples, trough occurs at sample 12, finding location of maximum post trough
     spikeTroughPeak = np.array(spikeTroughPeak)/outDict['sampleRate'] # convert to s
     outDict['spikeTroughPeak'] = spikeTroughPeak
 
@@ -145,7 +149,7 @@ def importAImat(filepath, sortOption='mtime'):
         aiFiles.sort(key=os.path.getmtime) # sorting by file creation time (may be problematic in mac or linux)
     elif sortOption == 'regexp':
         aiFiles = glob.glob('*AnalogInputs.mat') # including full filepath results in regezp matches
-        aiFiles.sort(key=lambda l: grp('[0-9]*D',l)) # regular expression finding string of numbers before D
+        aiFiles.sort(key=lambda l: grp('[0-9]*A',l)) # regular expression finding string of numbers before D
     else:
         print('Invalid sortOption')
         return -1
@@ -540,6 +544,36 @@ def calcStepMetrics(psth_dict, bsMean, bsSTD, on_window=(0.25,0.3), off_window=(
     response_metrics['ratios_peaks'] = ratios_peaks
     response_metrics['threshold'] = threshold
     return response_metrics
+
+
+def spikeTriggeredAverage(spikes, stimulusTrace, window=(-.1,.1), sampleRate=20000):
+    """
+    Calculates the average of a stimulus trace around each spike
+
+    Inputs:
+        spikes - sequence - list of spike times to trigger against
+        stimulusTrace - ndarray - stimulus to average
+        window - sequence, len 2 - period over which to average in s, defaults to (-0.1, 0.1)
+        sampleRate - int - sample rate
+    Outputs:
+        sta - sta from -window to window at rate of sampleRate
+        xaxis - ndarray, sequence for xaxis of sta
+    """
+    sta = np.zeros(int((window[1]-window[0])*sampleRate))
+    window_samples = [int(n*sampleRate) for n in window]
+    numErrors = 0
+    for spike in spikes:
+        try:
+            sta = sta + stimulusTrace[int(spike+window_samples[0]):int(spike+window_samples[1])]
+        except ValueError:
+            numErrors += 1
+    sta /= len(spikes) - numErrors
+    xaxis = np.arange(window[0],window[1],1/sampleRate)
+
+    return sta, xaxis
+
+
+
 
 ### functions regarding indentOnGrid
 
@@ -947,7 +981,7 @@ def extractLaserPositions(matFile):
         positions.append((float(x[sample]*voltageToDistance), float(y[sample]*voltageToDistance)))
     return positions
 
-def extractLaserPSTH(matFile, samples, spikes, duration=None, sampleRate=20000):
+def extractLaserPSTH(matFile, samples, spikes, duration=None, sampleRate=20000, includeLaserList=True):
     """
     Make lists of samples and spikes at each laser pulse
     inputs:
@@ -955,6 +989,7 @@ def extractLaserPSTH(matFile, samples, spikes, duration=None, sampleRate=20000):
         samples - sequence of spike times
         spikes - sequence of cluster identities for each spike
         duration - period to include after each spike (in s), default is ISI
+        includeLaserList - boolean, use False to not calculate laser list
     outputs:
         samplesList - list of lists of spike samples after each laser pulse
         spikesList - list of lists of cluster identity corresponding to samplesList
@@ -972,19 +1007,24 @@ def extractLaserPSTH(matFile, samples, spikes, duration=None, sampleRate=20000):
 
     samplesList = []
     spikesList = []
-    laserList = []
+    if includeLaserList:
+        laserList = []
 
     for start in laserOnsets:
         adjStart = int(start * (sampleRate/temp['Fs'])) ## adjusting the start in case the sample rates differ between nidaq and intan
         end = int(adjStart + sampleRate * duration)
         samplesList.append(samples[(samples > adjStart) & (samples < end)] - adjStart)
         spikesList.append(spikes[(samples > adjStart) & (samples < end)])
-        try:
-            laserList.append(temp['laser'][start:int(start+temp['Fs']*duration)])
-        except(KeyError):
-            laserList.append(temp['lz1'][start:int(start+temp['Fs']*duration)])
+        if includeLaserList:
+            try:
+                laserList.append(temp['laser'][start:int(start+temp['Fs']*duration)])
+            except(KeyError):
+                laserList.append(temp['lz1'][start:int(start+temp['Fs']*duration)])
 
-    return samplesList, spikesList, laserList
+    if includeLaserList:
+        return samplesList, spikesList, laserList
+    else:
+        return samplesList, spikesList
 
 def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_window, units, save=False, saveString='', smoothBin=0):
     """
@@ -1003,7 +1043,7 @@ def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_wind
     ouput - ndarray, optical receptive fields with shape (numBins, numBins, numUnits)
     """
 
-    samplesList, spikesList, laserList = extractLaserPSTH(matFile, samples, spikes)
+    samplesList, spikesList = extractLaserPSTH(matFile, samples, spikes, includeLaserList=False)
     parameters = scipy.io.loadmat(matFile, variable_names=['edgeLength','offsetX','offsetY','ISI'])
     laserPositions = np.transpose(extractLaserPositions(matFile))
     binSizeMicron = binSize * 1000
