@@ -38,7 +38,10 @@ for i = 1:length(rhdFiles)
     
     diFileName = strcat(filename(1:end-4),'DigitalInputs.mat');
     save(diFileName,'board_dig_in_data') % save digital inputs
-    % when I make analog channel inputs, make a similar expression here
+    
+    aiFileName = strcat(filename(1:end-4),'AnalogInputs.mat');
+    save(aiFileName,'board_adc_data') % save analog inputs
+    
     
     fwrite(fid, amplifier_data(:),'int16'); % append to .dat file
     
