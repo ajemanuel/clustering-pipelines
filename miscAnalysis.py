@@ -1188,6 +1188,44 @@ def randSingleAnalysis(matFile, samples, spikes, units,
 
 
 
+### for dealing with LFPs
+
+def extractLFPs(rhdFile,filterFreq=250,sampleRate=20000,downSample=4,stimChannel=1):
+    """
+    Extract LFPs from RHDfiles
+    Input:
+        rhdFile - string, filename for the file from the intan recording
+        filterFreq - int or float, cutoff frequency (Hz)
+        sampleRate - int, sample rate of intan recording (Hz)
+        downSample - int, factor by which to downsample the LFPs
+        stimChannel - int, designate the analog input channel that you'd like to match to the LFPs
+    Output:
+        LFPs - ndarray with filtered traces for each channel
+        stim - ndarray with downsampled stim trace
+    """
+
+    from scipy.signal import butter, lfilter, filtfilt
+    import read_rhd_controller
+    def butter_lowpass(cutoff, fs, order=8):
+        nyq = 0.5 * fs
+        normal_cutoff = cutoff / nyq
+        b,a = butter(order,normal_cutoff,btype='low',analog=False)
+        return b, a
+    def butter_lowpass_filter(data, cutoff, fs, order=8):
+        b,a = butter_lowpass(cutoff, fs, order=order)
+        y = scipy.signal.lfilter(b,a,data)
+        return y
+
+    b,a = butter_lowpass(filterFreq, sampleRate) ## using default order=8
+
+    rhdContents = read_rhd_controller.read_data(rhdFile)
+    #output = np.zeros(rhdContents['amplifier_data'].shape)
+
+    LFPs = filtfilt(b,a,rhdContents['amplifier_data'])
+    LFPs = LFPs[:,::downSample]
+    stim = filtfilt(b,a,rhdContents['board_adc_data'][stimChannel,::downSample]) ## filtering the stimulus to to make it easier to find the starts
+    return LFPs, stim
+
 
 
 
