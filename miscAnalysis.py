@@ -1190,7 +1190,7 @@ def randSingleAnalysis(matFile, samples, spikes, units,
 
 ### for dealing with LFPs
 
-def extractLFPs(rhdFile,filterFreq=250,sampleRate=20000,downSample=4,stimChannel=1):
+def extractLFPs(rhdFile,filterFreq=250,sampleRate=20000,downSample=10,stimChannel=1):
     """
     Extract LFPs from RHDfiles
     Input:
