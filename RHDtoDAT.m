@@ -2,12 +2,12 @@
 clear
 
 dataPath = uigetdir('Z:/HarveyLab/Tier1/Alan/Data','Choose folder with .rhd files');
-tempPath = 'G:\\temp\';
+tempPath = 'C:\\temp\';
 %clusteringPath = 'C:/Users/Alan/Documents/Github/clustering-pipelines';
 
 %cleaning up the tempPath in case anything is in it %% warning %%
 delete([tempPath '*'])
-delete([tempPath '/alldata/*'])
+delete([tempPath '\alldata\*'])
 if exist([tempPath 'alldata'],'dir')
     rmdir([tempPath 'alldata'])
 end
@@ -27,8 +27,8 @@ for i = 1:length(rhdFiles)
 end
 
 %% 
-mkdir('G:\\temp\','alldata')
-dataFileName = ['G:\\temp\' '\alldata\raw.dat']; % make .dat file
+mkdir(tempPath,'alldata')
+dataFileName = [tempPath '\alldata\raw.dat']; % make .dat file
 fid = fopen(dataFileName, 'w'); % open .dat file for writing
 
 for i = 1:length(rhdFiles)
@@ -38,7 +38,10 @@ for i = 1:length(rhdFiles)
     
     diFileName = strcat(filename(1:end-4),'DigitalInputs.mat');
     save(diFileName,'board_dig_in_data') % save digital inputs
-    % when I make analog channel inputs, make a similar expression here
+    
+    aiFileName = strcat(filename(1:end-4),'AnalogInputs.mat');
+    save(aiFileName,'board_adc_data') % save analog inputs
+    
     
     fwrite(fid, amplifier_data(:),'int16'); % append to .dat file
     
@@ -53,14 +56,14 @@ end
 st = fclose('all');
 
 fprintf('copying files back to server\n')
+delete([tempPath '*.rhd'])
 copyfile(tempPath,dataPath)
 
 %cleaning up
-delete([tempPath '*'])
-delete([tempPath '/alldata/*'])
+delete([tempPath '\*'])
+delete([tempPath '\alldata\*'])
 rmdir([tempPath 'alldata'])
 
 fprintf('Finished\nThe directory was %s\n',dataPath)
-jrc spikesort [dataPath '\alldata\raw.dat']
 clear
 

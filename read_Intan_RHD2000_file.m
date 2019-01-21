@@ -92,7 +92,7 @@ notes = struct( ...
     'note1', fread_QString(fid), ...
     'note2', fread_QString(fid), ...
     'note3', fread_QString(fid) );
-    
+
 % If data file is from GUI v1.1 or later, see if temperature sensor data
 % was saved.
 num_temp_sensor_channels = 0;
@@ -203,7 +203,7 @@ for signal_group = 1:number_of_signal_groups
             new_trigger_channel(1).digital_edge_polarity = fread(fid, 1, 'int16');
             new_channel(1).electrode_impedance_magnitude = fread(fid, 1, 'single');
             new_channel(1).electrode_impedance_phase = fread(fid, 1, 'single');
-            
+
             if (channel_enabled)
                 switch (signal_type)
                     case 0
@@ -229,7 +229,7 @@ for signal_group = 1:number_of_signal_groups
                         error('Unknown channel type');
                 end
             end
-            
+
         end
     end
 end
@@ -281,7 +281,7 @@ if (num_board_dig_out_channels > 0)
 end
 % Temp sensor is sampled once per data block
 if (num_temp_sensor_channels > 0)
-   bytes_per_block = bytes_per_block + 1 * 2 * num_temp_sensor_channels; 
+   bytes_per_block = bytes_per_block + 1 * 2 * num_temp_sensor_channels;
 end
 
 % How many data blocks remain in this file?
@@ -314,19 +314,19 @@ if verbose == 1
 end
 
 if (data_present)
-    
+
     % Pre-allocate memory for data.
     if verbose == 1
         fprintf(1, 'Allocating memory for data...\n');
     end
-    
+
     num_amplifier_samples = int32(num_amplifier_samples);
     num_aux_input_samples = int32(num_aux_input_samples);
     num_supply_voltage_samples = int32(num_supply_voltage_samples);
     num_board_adc_samples = int32(num_board_adc_samples);
     num_board_dig_in_samples = int32(num_board_dig_in_samples);
     num_board_dig_out_samples = int32(num_board_dig_out_samples);
-    
+
     t_amplifier = zeros(1, num_amplifier_samples);
 
     amplifier_data = zeros(num_amplifier_channels, num_amplifier_samples);
@@ -343,7 +343,7 @@ if (data_present)
     if verbose == 1
         fprintf(1, 'Reading data from file...\n');
     end
-    
+
     amplifier_index = 1;
     aux_input_index = 1;
     supply_voltage_index = 1;
@@ -414,7 +414,7 @@ fclose(fid);
 
 if (data_present)
     if verbose == 1
-    fprintf(1, 'Parsing data...\n');
+        fprintf(1, 'Parsing data...\n');
     end
     % Extract digital input channels to separate variables.
     for i=1:num_board_dig_in_channels
@@ -433,7 +433,7 @@ if (data_present)
     if (eval_board_mode == 1)
         board_adc_data = 152.59e-6 * (board_adc_data - 32768); % units = volts
     elseif (eval_board_mode == 13) % Intan Recording Controller
-        board_adc_data = 312.5e-6 * (board_adc_data - 32768); % units = volts    
+        board_adc_data = 312.5e-6 * (board_adc_data - 32768); % units = volts
     else
         board_adc_data = 50.354e-6 * board_adc_data; % units = volts
     end
@@ -462,19 +462,19 @@ if (data_present)
     % same notch filter to amplifier data here.
 %     if (notch_filter_frequency > 0)
 %         fprintf(1, 'Applying notch filter...\n');
-% 
+%
 %         print_increment = 10;
 %         percent_done = print_increment;
 %         for i=1:num_amplifier_channels
 %             amplifier_data(i,:) = ...
 %                 notch_filter(amplifier_data(i,:), sample_rate, notch_filter_frequency, 10);
-% 
+%
 %             fraction_done = 100 * (i / num_amplifier_channels);
 %             if (fraction_done >= percent_done)
 %                 fprintf(1, '%d%% done...\n', percent_done);
 %                 percent_done = percent_done + print_increment;
 %             end
-% 
+%
 %         end
 %     end
 
@@ -582,7 +582,7 @@ return
 function s = plural(n)
 
 % s = plural(n)
-% 
+%
 % Utility function to optionally plurailze words based on the value
 % of n.
 
@@ -629,7 +629,7 @@ b1 = -2*cos(2*pi*Fc);
 b2 = 1;
 
 out = zeros(size(in));
-out(1) = in(1);  
+out(1) = in(1);
 out(2) = in(2);
 % (If filtering a continuous data stream, change out(1) and out(2) to the
 %  previous final two values of out.)
@@ -653,4 +653,3 @@ variable_name = inputname(1);
 assignin('base', variable_name, variable);
 
 return;
-
