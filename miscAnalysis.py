@@ -276,21 +276,22 @@ def makeSweepPSTH(bin_size, samples, spikes,sample_rate=20000, units=None, durat
     return psth_dict
 
 def calculateLatencyParameters(eventSamples, baselinePeriod, samples, spikes, units=None, sampleRate=20000, numShuffles=100,
-                                JSwindow=[0,10,0.25]):
+                                JSwindow=[0,10,0.25],resetRandSeed=True):
     """
     Calculating latencies with distribution of first spikes following onset of stimulus
     Inputs:
         eventSamples - sequence; time (in samples) at which events start
-        baselinePeriod - sequence; beginning and end of baseline period (in samples)
+        baselinePeriod - sequence, len=2 of np.int64; beginning and end of baseline period (in samples)
             - alternatively a sequence of sequences, each sequence with a beginning and end for a baseline epoch
         samples - sequence; samples at which spike fires
         spikes - sequence; unit firing spike at time corresponding to the same item in the samples sequence
         units - sequence; units to include in analysis
         numShuffles - int; number of times to calculate baseline latencies
         JSwindow - sequence; first two items are the time window (ms)  to consider for calculating Jensen-Shannon divergences, the last is the size of the bins
+        resetRandSeed - boolean; whether or not to reset the random seed prior to generating baseline samples
     Outputs:
         Dictionary (outDict) containing the following keys
-        latencies - ndarray; M units x N events latency array
+        latencies - ndarray; M units x N events latency array in seconds
         latenciesBaseline - ndarray; M units x N shuffles x O baseline events latency array
         mean - ndarray; mean latency for each unit (M)
         meanBaseline - ndarray; mean baseline latency for each unit (M) for each shuffle (N)
@@ -322,10 +323,11 @@ def calculateLatencyParameters(eventSamples, baselinePeriod, samples, spikes, un
 
 
     print('Generating Baseline Samples')
-    np.random.seed(20181204)  # set random seed for reproducibility
+    if resetRandSeed:
+        np.random.seed(20181204)  # set random seed for reproducibility
     baselineSamples = np.zeros((numShuffles,len(eventSamples))) ## pre-allocating matrix for baseline samples
     for shuffle in range(numShuffles):
-        if isinstance(baselinePeriod[0],int): ## if only one baseline epoch
+        if isinstance(baselinePeriod[0],np.int64): ## if only one baseline epoch
             temp = np.random.rand(len(eventSamples)) # matching # of events for baseline and stimulus-evoked samples
             temp *= (baselinePeriod[1] - baselinePeriod[0])
             temp += baselinePeriod[0]
@@ -956,18 +958,17 @@ def plotPositionResponses(positionResponses, gridPosActual, force=0, size=300, s
 
 ### Functions for plotting responses to optical random dot patterns
 
-def extractLaserPositions(matFile):
+def extractLaserPositions(matFile, voltageToDistance=3.843750000e+03):
     """
     Calculate the positions of the stimulus at each point.
 
     input:
     matFile - str, path to file generated from stimulus
-
+    voltageToDistance - float, calibration for converting voltage; on DRG rig voltageToDistance=7000
     output:
     positions - list of tuples containing (x, y) coordinates at each position.
     """
 
-    voltageToDistance = 3.843750000000000e+03  # calibration for alan's rig with thorlabs scan mirrors
     temp = scipy.io.loadmat(matFile, variable_names=['laser','lz1','x','y'])
     try:
         laser = temp['laser']
@@ -1026,7 +1027,42 @@ def extractLaserPSTH(matFile, samples, spikes, duration=None, sampleRate=20000, 
     else:
         return samplesList, spikesList
 
-def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_window, units, save=False, saveString='', smoothBin=0):
+
+def extractLaserPSTH_intan(laser_trigger, samples, spikes, duration=0.1, sampleRate=20000, includeLaserList=True):
+    """
+    Make lists of samples and spikes at each laser pulse
+    inputs:
+        laser_trigger - sequence, digital signal containing laser onsets
+        samples - sequence of spike times
+        spikes - sequence of cluster identities for each spike
+        duration - period to include after each onset (in s), default is 0.1 s
+        sampleRate  - int, sample rate of acquisition (in Hz), default = 20000
+        includeLaserList - boolean, use False to not calculate laser list (saves time/memory)
+
+    outputs:
+        samplesList - list of lists of spike samples after each laser pulse
+        spikesList - list of lists of cluster identity corresponding to samplesList
+        laserList - list of ndarrays with waveform of laser pulse command
+    """
+
+    laserOnsets = np.where(laser_trigger[1:] > laser_trigger[:-1])[0]
+    samplesList = []
+    spikesList = []
+    if includeLaserList:
+        laserList = []
+
+    for start in laserOnsets:
+        end = start + sampleRate * duration
+        samplesList.append(samples[(samples > start) & (samples < end)] - start)
+        spikesList.append(spikes[(samples > start) & (samples < end)])
+        if includeLaserList:
+            laserList.append(laser_trigger[start:int(start+sampleRate*duration)])
+    if includeLaserList:
+        return samplesList, spikesList, laserList
+    else:
+        return samplesList, spikesList
+
+def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_window, units, save=False, saveString='', smoothBin=0, voltageToDistance = 3.843750000e+03):
     """
     Inputs:
     matFile - string, path to file generated with randSquareOffset stimulus
@@ -1039,13 +1075,14 @@ def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_wind
     save - boolean, whether to save plot or not
     saveString - string, string appended to filename when saving
     smoothBin - float, size of gaussian filter for smoothing (in bin units), default=0, no smoothing
+    voltageToDistance - float, calibration for converting voltage into micron distance; DRG rig = 7000
     Output:
     ouput - ndarray, optical receptive fields with shape (numBins, numBins, numUnits)
     """
 
     samplesList, spikesList = extractLaserPSTH(matFile, samples, spikes, includeLaserList=False)
     parameters = scipy.io.loadmat(matFile, variable_names=['edgeLength','offsetX','offsetY','ISI'])
-    laserPositions = np.transpose(extractLaserPositions(matFile))
+    laserPositions = np.transpose(extractLaserPositions(matFile,voltageToDistance=voltageToDistance))
     binSizeMicron = binSize * 1000
     halfEdgeLength = parameters['edgeLength']/2
     xmin = int(parameters['offsetX'] - halfEdgeLength)
@@ -1067,7 +1104,6 @@ def calcBinnedOpticalResponse(matFile, samples, spikes, binSize, window, bs_wind
         if len(tempPositions > 0):
             tempPSTH = makeSweepPSTH(0.001,[samplesList[a] for a in tempPositions],[spikesList[a] for a in tempPositions],
                 units=units, duration=float(parameters['ISI']), rate=False)
-
             for unit in range(numUnits):
                 output[binxy[0],binxy[1],unit] = np.mean(tempPSTH['psths'][window[0]:window[1],unit]) - np.mean(tempPSTH['psths'][bs_window[0]:bs_window[1],unit])
     for unit in range(numUnits):
@@ -1195,36 +1231,50 @@ def extractLFPs(rhdFile,filterFreq=250,sampleRate=20000,downSample=10,stimChanne
     Extract LFPs from RHDfiles
     Input:
         rhdFile - string, filename for the file from the intan recording
-        filterFreq - int or float, cutoff frequency (Hz)
+        filterFreq - sequence, len 2, - cutoffs for bandpass filter (Hz)
         sampleRate - int, sample rate of intan recording (Hz)
         downSample - int, factor by which to downsample the LFPs
         stimChannel - int, designate the analog input channel that you'd like to match to the LFPs
     Output:
         LFPs - ndarray with filtered traces for each channel
         stim - ndarray with downsampled stim trace
+        sweepOnsets - ndarray with downsampled samples at which trigger signal turned on
+        meanPower500_5000 - ndarray with mean power between 500 and 5000 Hz for each channel (in channel order)
     """
 
-    from scipy.signal import butter, lfilter, filtfilt
+    from scipy.signal import butter, lfilter, filtfilt, periodogram
     import read_rhd_controller
-    def butter_lowpass(cutoff, fs, order=8):
+    def butter_lowpass(cutoffs, fs, order=8):
         nyq = 0.5 * fs
-        normal_cutoff = cutoff / nyq
-        b,a = butter(order,normal_cutoff,btype='low',analog=False)
+        normal_cutoffs = cutoffs / nyq
+        b,a = butter(order,normal_cutoffs,btype='lowpass',analog=False)
         return b, a
-    def butter_lowpass_filter(data, cutoff, fs, order=8):
-        b,a = butter_lowpass(cutoff, fs, order=order)
+    def butter_bandpass_filter(data, cutoffs, fs, order=8):
+        b,a = butter_bandpass(cutoffs, fs, order=order)
         y = scipy.signal.lfilter(b,a,data)
         return y
-
     b,a = butter_lowpass(filterFreq, sampleRate) ## using default order=8
 
     rhdContents = read_rhd_controller.read_data(rhdFile)
     #output = np.zeros(rhdContents['amplifier_data'].shape)
 
-    LFPs = filtfilt(b,a,rhdContents['amplifier_data'])
+    LFPs = filtfilt(b,a,rhdContents['amplifier_data'],padlen=150)
     LFPs = LFPs[:,::downSample]
-    stim = filtfilt(b,a,rhdContents['board_adc_data'][stimChannel,::downSample]) ## filtering the stimulus to to make it easier to find the starts
-    return LFPs, stim
+    try:
+        stim = filtfilt(b,a,rhdContents['board_adc_data'][stimChannel,:]) ## filtering the stimulus to to make it easier to find the starts
+        stim = stim[::downSample]
+
+    except KeyError:
+        stim = [0]
+    digIn0 = rhdContents['board_dig_in_data'][0,:]
+    sweepOnsets = np.where(digIn0[1:] > digIn0[:-1])[0]/downSample
+    meanPower500_5000 = []
+    for channel in rhdContents['amplifier_data']:
+        f, Pxx_den = periodogram(channel, sampleRate)
+        meanPower500_5000.append(np.mean(Pxx_den[np.where((f > 500) & (f < 5000))[0]]))
+
+
+    return LFPs, stim, sweepOnsets, meanPower500_5000
 
 
 
