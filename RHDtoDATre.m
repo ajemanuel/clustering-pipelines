@@ -1,11 +1,7 @@
-% use this script to convert rhd files with all 32 ch saved to a .dat file
-% for clustering
+%% specify parameters and paths
 clear
 
-
-%% specify parameters and paths
-
-dataPath = uigetdir('Z:/GintyLab/Emanuel/Data','Choose folder with .rhd files');
+dataPath = uigetdir('G://','Choose folder with .rhd files');
 tempPath = 'C:\\temp\';
 %clusteringPath = 'C:/Users/Alan/Documents/Github/clustering-pipelines';
 
@@ -19,7 +15,7 @@ end
 fprintf('copying files to temporary path on SSD\n')
 copyfile([dataPath '\*.rhd'],tempPath)
 rhdFiles = dir([tempPath '*.rhd']); % list all rhd files
-[~, idx] = sort({rhdFiles.date});
+[~, idx] = sort({rhdFiles.name});
 rhdFiles = rhdFiles(idx);
 
 
@@ -39,7 +35,7 @@ for i = 1:length(rhdFiles)
     fprintf('Loading file %i of %i, %s\n',i, length(rhdFiles),fullfile(tempPath,rhdFiles(i).name));
     read_Intan_RHD2000_file(fullfile(tempPath,rhdFiles(i).name),0);
     
-    if exist('board_dig_in_data') %
+    if exist('board_dig_in_data') % only if digital inputs were recorded
         diFileName = strcat(filename(1:end-4),'DigitalInputs.mat');
         save(diFileName,'board_dig_in_data') % save digital inputs
     end
@@ -49,30 +45,8 @@ for i = 1:length(rhdFiles)
         save(aiFileName,'board_adc_data') % save analog inputs
     end
     
-    %% writing only the channels for the tetrode to the file
-    if size(amplifier_data,1) == 32
-        fwrite(fid, amplifier_data([25 17 1 9],:),'int16'); % append to .dat file
-        %the order of the channels matches tetrode-LLO-new.prb
-    else
-        newAmpData = zeros(4,size(amplifier_data,2));
-        for j = 1:size(amplifier_data,1)
-            channelNum = str2num(amplifier_channels(j).native_channel_name(end-2:end));
-            if channelNum == 24
-                newAmpData(1,:) = amplifier_data(j,:);
-            elseif channelNum == 16
-                newAmpData(2,:) = amplifier_data(j,:);
-            elseif channelNum == 0
-                newAmpData(3,:) = amplifier_data(j,:);
-            elseif channelNum == 8
-                newAmpData(4,:) = amplifier_data(j,:);
-            end
-        end
-        
-        fwrite(fid, newAmpData,'int16'); % append this to the .dat file instead
-    end
-                
-                
- 
+    fwrite(fid, amplifier_data(:),'int16'); % append to .dat file
+    
     % cleanup
     if i < length(rhdFiles) %% don't clear for the last file so can use these for building prm file
         clear amplifier_channels amplifier_data aux_input_channels aux_input_data ...
@@ -94,5 +68,4 @@ rmdir([tempPath 'alldata'])
 
 fprintf('Finished\nThe directory was %s\n',dataPath)
 clear
-
 

@@ -13,7 +13,12 @@ if exist([tempPath 'alldata'],'dir')
 end
 
 fprintf('copying files to temporary path on SSD\n')
-copyfile([dataPath '\*.rhd'],tempPath)
+rhdFilesZ = dir(fullfile(dataPath, '**/*.rhd'));
+
+for i = 1:length(rhdFilesZ)
+    copyfile(fullfile(rhdFilesZ(i).folder,rhdFilesZ(i).name),tempPath)
+end
+
 rhdFiles = dir([tempPath '*.rhd']); % list all rhd files
 [~, idx] = sort({rhdFiles.date});
 rhdFiles = rhdFiles(idx);
@@ -35,9 +40,10 @@ for i = 1:length(rhdFiles)
     fprintf('Loading file %i of %i, %s\n',i, length(rhdFiles),fullfile(tempPath,rhdFiles(i).name));
     read_Intan_RHD2000_file(fullfile(tempPath,rhdFiles(i).name),0);
     
-    
-    diFileName = strcat(filename(1:end-4),'DigitalInputs.mat');
-    save(diFileName,'board_dig_in_data') % save digital inputs
+    if exist('board_dig_in_data') % only if digital inputs were recorded
+        diFileName = strcat(filename(1:end-4),'DigitalInputs.mat');
+        save(diFileName,'board_dig_in_data') % save digital inputs
+    end
     
     if exist('board_adc_data')
         aiFileName = strcat(filename(1:end-4),'AnalogInputs.mat');
